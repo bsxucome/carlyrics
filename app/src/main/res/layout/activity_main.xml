@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_app">
+
+    <ImageView
+        android:id="@+id/backgroundArtworkView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:alpha="0.34"
+        android:contentDescription="@string/artwork_desc"
+        android:scaleType="centerCrop" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_backdrop_scrim" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <LinearLayout
+            android:id="@+id/permissionPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/bg_panel"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/permission_title"
+                android:textColor="@android:color/white"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/permissionDescription"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/permission_desc"
+                android:textColor="#CCFFFFFF"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/openPermissionButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_action_primary"
+                android:text="@string/open_permission"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="14dp"
+                android:layout_weight="0.4"
+                android:background="@drawable/bg_panel"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <ImageView
+                    android:id="@+id/artworkView"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@string/artwork_desc"
+                    android:scaleType="centerCrop"
+                    android:src="@android:drawable/ic_menu_gallery" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="0.6"
+                android:background="@drawable/bg_panel"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:id="@+id/titleView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxLines="2"
+                    android:text="@string/default_title"
+                    android:textColor="@android:color/white"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/artistView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:maxLines="1"
+                    android:text="@string/default_artist"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:id="@+id/sourceView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:maxLines="1"
+                    android:text="@string/default_source"
+                    android:textColor="#9CE8FBFF"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/retryLyricsButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_action_secondary"
+                        android:text="@string/retry_lyrics"
+                        android:textAllCaps="false"
+                        android:textColor="@android:color/white"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/importLyricsButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_action_secondary"
+                        android:text="@string/import_lyrics"
+                        android:textAllCaps="false"
+                        android:textColor="@android:color/white"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/clearImportedLyricsButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_action_secondary"
+                        android:text="@string/clear_imported_lyrics"
+                        android:textAllCaps="false"
+                        android:textColor="@android:color/white"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/lyricsStatusView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/default_lyrics_status"
+                    android:textColor="#D8F4FFFF"
+                    android:textSize="14sp" />
+
+                <ListView
+                    android:id="@+id/lyricsListView"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:divider="@android:color/transparent"
+                    android:dividerHeight="0dp"
+                    android:fastScrollEnabled="false"
+                    android:padding="0dp"
+                    android:scrollbars="none" />
+
+                <TextView
+                    android:id="@+id/diagnosticsView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:maxLines="4"
+                    android:text="@string/default_diagnostics"
+                    android:textColor="#80FFFFFF"
+                    android:textSize="11sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_panel"
+            android:orientation="vertical"
+            android:paddingLeft="20dp"
+            android:paddingTop="16dp"
+            android:paddingRight="20dp"
+            android:paddingBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/currentTimeView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp" />
+
+                <ProgressBar
+                    android:id="@+id/progressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="10dp"
+                    android:layout_marginLeft="12dp"
+                    android:layout_marginRight="12dp"
+                    android:layout_weight="1"
+                    android:max="1000"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/progress_track" />
+
+                <TextView
+                    android:id="@+id/totalTimeView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="@android:color/white"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/previousButton"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginRight="22dp"
+                    android:background="@drawable/bg_media_button_secondary"
+                    android:contentDescription="@string/previous"
+                    android:padding="18dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_skip_previous" />
+
+                <ImageButton
+                    android:id="@+id/playPauseButton"
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:layout_marginRight="22dp"
+                    android:background="@drawable/bg_media_button_primary"
+                    android:contentDescription="@string/play"
+                    android:padding="22dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_play" />
+
+                <ImageButton
+                    android:id="@+id/nextButton"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/bg_media_button_secondary"
+                    android:contentDescription="@string/next"
+                    android:padding="18dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_skip_next" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>
+

@@ -1,0 +1,9 @@
+.gradle/
+.gradle-home/
+.idea/
+local.properties
+build/
+app/build/
+captures/
+output/
+tmp_test_icon.png

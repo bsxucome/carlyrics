@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_top">#0F2233</color>
+    <color name="bg_bottom">#09131C</color>
+    <color name="panel">#8F223548</color>
+    <color name="primary">#1FA2FF</color>
+    <color name="primary_dark">#1173B8</color>
+    <color name="secondary">#7A39556B</color>
+    <color name="secondary_dark">#5E263A49</color>
+    <color name="lyric_active">#FFFFFFFF</color>
+    <color name="lyric_inactive">#A3FFFFFF</color>
+</resources>
