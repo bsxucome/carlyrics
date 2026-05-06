@@ -17,23 +17,15 @@
     <string name="pause">Pause</string>
     <string name="next">Next</string>
     <string name="retry_lyrics">Retry match</string>
-    <string name="import_lyrics">Import LRC</string>
-    <string name="clear_imported_lyrics">Use auto</string>
     <string name="lyrics_placeholder">Lyrics will appear here</string>
-    <string name="lyrics_not_found">No lyrics matched yet. Retry, import a local LRC file, or add another lyrics source later.</string>
+    <string name="lyrics_not_found">No reliable lyrics match yet for this track.</string>
     <string name="lyrics_loading">Matching lyrics...</string>
-    <string name="lyrics_importing">Importing selected lyrics file...</string>
     <string name="lyrics_status_prefix">Lyrics status: </string>
     <string name="status_permission_missing">Notification access is disabled, so Bluetooth music metadata cannot be read.</string>
     <string name="status_waiting_media">Waiting for Bluetooth music...</string>
     <string name="status_source_session">Bluetooth audio</string>
     <string name="status_source_notification">Phone audio</string>
     <string name="status_source_unknown">Connected source</string>
-    <string name="status_no_track_for_import">Play a track first, then import lyrics for it.</string>
-    <string name="status_import_picker_missing">No file picker is available on this head unit.</string>
-    <string name="status_import_success">Imported local lyrics for the current track.</string>
-    <string name="status_import_cleared">Manual lyrics removed. Switched back to automatic matching.</string>
-    <string name="status_import_failed">The selected file could not be used as lyrics.</string>
     <string name="debug_shown">Debug info shown</string>
     <string name="debug_hidden">Debug info hidden</string>
 </resources>

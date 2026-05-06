@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
@@ -279,14 +280,32 @@ public class MediaObserverService extends NotificationListenerService {
         }
 
         String title = metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
+        if (TextUtils.isEmpty(title) && metadata != null) {
+            title = metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
+        }
         String artist = metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        if (TextUtils.isEmpty(artist) && metadata != null) {
+            artist = firstNonEmpty(
+                    metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST),
+                    metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE)
+            );
+        }
         String album = metadata == null ? "" : metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
+        if (TextUtils.isEmpty(album) && metadata != null) {
+            album = metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION);
+        }
         long duration = metadata == null ? 0L : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
         Bitmap artwork = null;
         if (metadata != null) {
             artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
             if (artwork == null) {
                 artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            }
+            if (artwork == null) {
+                MediaDescription description = metadata.getDescription();
+                if (description != null) {
+                    artwork = description.getIconBitmap();
+                }
             }
         }
 
@@ -326,8 +345,14 @@ public class MediaObserverService extends NotificationListenerService {
             return null;
         }
 
-        CharSequence titleText = extras.getCharSequence(Notification.EXTRA_TITLE);
-        CharSequence artistText = extras.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence titleText = firstNonEmpty(
+                extras.getCharSequence(Notification.EXTRA_TITLE),
+                extras.getCharSequence(Notification.EXTRA_TITLE_BIG)
+        );
+        CharSequence artistText = firstNonEmpty(
+                extras.getCharSequence(Notification.EXTRA_TEXT),
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+        );
         CharSequence subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
         if (TextUtils.isEmpty(titleText) && TextUtils.isEmpty(artistText)) {
             return null;
@@ -373,6 +398,14 @@ public class MediaObserverService extends NotificationListenerService {
         } catch (RuntimeException ignored) {
         }
         return null;
+    }
+
+    private static String firstNonEmpty(String first, String second) {
+        return !TextUtils.isEmpty(first) ? first : second;
+    }
+
+    private static CharSequence firstNonEmpty(CharSequence first, CharSequence second) {
+        return !TextUtils.isEmpty(first) ? first : second;
     }
 
     private static final class IconHolder {

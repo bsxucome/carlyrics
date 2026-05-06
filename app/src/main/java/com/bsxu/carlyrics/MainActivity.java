@@ -1,13 +1,14 @@
 package com.bsxu.carlyrics;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
@@ -35,7 +36,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
 
     private static final String NOTIFICATION_LISTENER_SETTINGS_ACTION =
             "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
-    private static final int REQUEST_IMPORT_LYRICS = 2001;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressTicker = new Runnable() {
@@ -60,8 +60,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
     private ImageButton playPauseButton;
     private ImageButton nextButton;
     private Button retryLyricsButton;
-    private Button importLyricsButton;
-    private Button clearImportedLyricsButton;
     private TextView lyricsStatusView;
     private TextView diagnosticsView;
     private ListView lyricsListView;
@@ -121,18 +119,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
                 requestLyrics(true);
             }
         });
-        importLyricsButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openLyricsPicker();
-            }
-        });
-        clearImportedLyricsButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clearImportedLyricsForCurrentTrack();
-            }
-        });
         sourceView.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
@@ -152,8 +138,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
         installPressFeedback(playPauseButton, 0.94f);
         installPressFeedback(nextButton, 0.92f);
         installPressFeedback(retryLyricsButton, 0.98f);
-        installPressFeedback(importLyricsButton, 0.98f);
-        installPressFeedback(clearImportedLyricsButton, 0.98f);
         updateActionButtons();
         renderDiagnostics();
     }
@@ -169,6 +153,12 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
     protected void onResume() {
         super.onResume();
         boolean permissionEnabled = PlaybackRepository.isNotificationAccessEnabled(this);
+        playbackRepository.setNotificationAccessGranted(permissionEnabled);
+        if (permissionEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            NotificationListenerService.requestRebind(
+                    new ComponentName(this, com.bsxu.carlyrics.playback.MediaObserverService.class)
+            );
+        }
         renderPermissionState(permissionEnabled);
     }
 
@@ -195,21 +185,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_IMPORT_LYRICS || resultCode != RESULT_OK || data == null) {
-            return;
-        }
-
-        Uri uri = data.getData();
-        if (uri == null) {
-            lyricsStatusView.setText(R.string.status_import_failed);
-            return;
-        }
-        importLyricsForCurrentTrack(uri);
-    }
-
     private void bindViews() {
         permissionPanel = findViewById(R.id.permissionPanel);
         openPermissionButton = (Button) findViewById(R.id.openPermissionButton);
@@ -225,16 +200,15 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
         playPauseButton = (ImageButton) findViewById(R.id.playPauseButton);
         nextButton = (ImageButton) findViewById(R.id.nextButton);
         retryLyricsButton = (Button) findViewById(R.id.retryLyricsButton);
-        importLyricsButton = (Button) findViewById(R.id.importLyricsButton);
-        clearImportedLyricsButton = (Button) findViewById(R.id.clearImportedLyricsButton);
         lyricsStatusView = (TextView) findViewById(R.id.lyricsStatusView);
         diagnosticsView = (TextView) findViewById(R.id.diagnosticsView);
         lyricsListView = (ListView) findViewById(R.id.lyricsListView);
     }
 
     private void renderPermissionState(boolean permissionEnabled) {
-        permissionPanel.setVisibility(permissionEnabled ? View.GONE : View.VISIBLE);
-        if (!permissionEnabled) {
+        boolean actuallyEnabled = permissionEnabled || PlaybackRepository.isNotificationAccessEnabled(this);
+        permissionPanel.setVisibility(actuallyEnabled ? View.GONE : View.VISIBLE);
+        if (!actuallyEnabled) {
             lyricsStatusView.setText(R.string.status_permission_missing);
         }
     }
@@ -370,93 +344,6 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
         });
     }
 
-    private void openLyricsPicker() {
-        if (currentSnapshot == null || !currentSnapshot.hasTrackData()) {
-            lyricsStatusView.setText(R.string.status_no_track_for_import);
-            return;
-        }
-
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
-                "text/plain",
-                "application/octet-stream",
-                "application/x-subrip"
-        });
-
-        try {
-            startActivityForResult(Intent.createChooser(intent, getString(R.string.import_lyrics)), REQUEST_IMPORT_LYRICS);
-        } catch (ActivityNotFoundException noDocumentPicker) {
-            Intent fallbackIntent = new Intent(Intent.ACTION_GET_CONTENT);
-            fallbackIntent.addCategory(Intent.CATEGORY_OPENABLE);
-            fallbackIntent.setType("*/*");
-            try {
-                startActivityForResult(Intent.createChooser(fallbackIntent, getString(R.string.import_lyrics)), REQUEST_IMPORT_LYRICS);
-            } catch (ActivityNotFoundException ignored) {
-                lyricsStatusView.setText(R.string.status_import_picker_missing);
-            }
-        }
-    }
-
-    private void importLyricsForCurrentTrack(Uri uri) {
-        final PlaybackSnapshot snapshot = currentSnapshot;
-        if (snapshot == null || !snapshot.hasTrackData()) {
-            lyricsStatusView.setText(R.string.status_no_track_for_import);
-            return;
-        }
-
-        currentLyricsTrackKey = snapshot.getTrackKey();
-        lyricsStatusView.setText(R.string.lyrics_importing);
-        lyricsRepository.importLyrics(snapshot, uri, new LyricsRepository.ImportCallback() {
-            @Override
-            public void onLyricsImported(final String trackKey, final LyricsResult result, final String errorMessage) {
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (!TextUtils.equals(currentLyricsTrackKey, trackKey)) {
-                            return;
-                        }
-
-                        if (result == null) {
-                            lyricsStatusView.setText(TextUtils.isEmpty(errorMessage)
-                                    ? getString(R.string.status_import_failed)
-                                    : errorMessage);
-                            renderDiagnostics();
-                            updateActionButtons();
-                            return;
-                        }
-
-                        currentLyrics = result;
-                        currentLyricIndex = -1;
-                        lyricListAdapter.setItems(result.getLines());
-                        lyricListAdapter.setActiveIndex(-1);
-                        lyricsStatusView.setText(R.string.status_import_success);
-                        renderDiagnostics();
-                        updateActionButtons();
-                        updateProgressAndLyrics();
-                    }
-                });
-            }
-        });
-    }
-
-    private void clearImportedLyricsForCurrentTrack() {
-        PlaybackSnapshot snapshot = currentSnapshot;
-        if (snapshot == null || !snapshot.hasTrackData()) {
-            lyricsStatusView.setText(R.string.status_no_track_for_import);
-            return;
-        }
-
-        lyricsRepository.clearImportedLyrics(snapshot);
-        currentLyrics = null;
-        currentLyricIndex = -1;
-        lyricsStatusView.setText(R.string.status_import_cleared);
-        renderDiagnostics();
-        updateActionButtons();
-        requestLyrics(true);
-    }
-
     private void showPlaceholderLyrics(String message) {
         List<LyricLine> items = new ArrayList<LyricLine>();
         items.add(new LyricLine(-1L, message));
@@ -467,14 +354,7 @@ public class MainActivity extends Activity implements PlaybackRepository.Playbac
     private void updateActionButtons() {
         boolean hasTrack = currentSnapshot != null && currentSnapshot.hasTrackData();
         retryLyricsButton.setEnabled(hasTrack);
-        importLyricsButton.setEnabled(hasTrack);
-
-        boolean hasImportedLyrics = hasTrack && lyricsRepository.hasImportedLyrics(currentSnapshot);
-        clearImportedLyricsButton.setEnabled(hasImportedLyrics);
-
         retryLyricsButton.setAlpha(hasTrack ? 1f : 0.55f);
-        importLyricsButton.setAlpha(hasTrack ? 1f : 0.55f);
-        clearImportedLyricsButton.setAlpha(hasImportedLyrics ? 1f : 0.55f);
     }
 
     private void renderDiagnostics() {

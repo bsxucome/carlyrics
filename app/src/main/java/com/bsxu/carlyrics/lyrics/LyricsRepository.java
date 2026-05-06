@@ -1,7 +1,6 @@
 package com.bsxu.carlyrics.lyrics;
 
 import android.content.Context;
-import android.net.Uri;
 import android.text.TextUtils;
 
 import com.bsxu.carlyrics.model.LyricLine;
@@ -34,15 +33,11 @@ public final class LyricsRepository {
         void onLyricsLoaded(String trackKey, LyricsResult result);
     }
 
-    public interface ImportCallback {
-        void onLyricsImported(String trackKey, LyricsResult result, String errorMessage);
-    }
-
     private static volatile LyricsRepository instance;
+    private static final String CACHE_VERSION_PREFIX = "v2_";
 
     private final Context appContext;
     private final File cacheDir;
-    private final File importedDir;
     private final ExecutorService executor;
     private final Map<String, LyricsResult> memoryCache;
     private final LrcLibLyricsClient lyricsClient;
@@ -52,10 +47,6 @@ public final class LyricsRepository {
         this.cacheDir = new File(appContext.getCacheDir(), "lyrics_cache");
         if (!cacheDir.exists()) {
             cacheDir.mkdirs();
-        }
-        this.importedDir = new File(appContext.getFilesDir(), "imported_lyrics");
-        if (!importedDir.exists()) {
-            importedDir.mkdirs();
         }
         this.executor = Executors.newSingleThreadExecutor();
         this.memoryCache = new ConcurrentHashMap<String, LyricsResult>();
@@ -85,15 +76,6 @@ public final class LyricsRepository {
         executor.execute(new Runnable() {
             @Override
             public void run() {
-                LyricsResult importedLyrics = readImportedLyrics(trackKey);
-                if (importedLyrics != null) {
-                    memoryCache.put(trackKey, importedLyrics);
-                    if (callback != null) {
-                        callback.onLyricsLoaded(trackKey, importedLyrics);
-                    }
-                    return;
-                }
-
                 LyricsResult result = null;
                 if (!forceRefresh) {
                     result = memoryCache.get(trackKey);
@@ -123,65 +105,6 @@ public final class LyricsRepository {
                 }
             }
         });
-    }
-
-    public boolean hasImportedLyrics(PlaybackSnapshot snapshot) {
-        if (snapshot == null || !snapshot.hasTrackData()) {
-            return false;
-        }
-        return getImportedFile(snapshot.getTrackKey()).exists();
-    }
-
-    public void clearImportedLyrics(PlaybackSnapshot snapshot) {
-        if (snapshot == null || !snapshot.hasTrackData()) {
-            return;
-        }
-
-        String trackKey = snapshot.getTrackKey();
-        memoryCache.remove(trackKey);
-        File importedFile = getImportedFile(trackKey);
-        if (importedFile.exists()) {
-            importedFile.delete();
-        }
-    }
-
-    public void importLyrics(final PlaybackSnapshot snapshot, final Uri uri, final ImportCallback callback) {
-        if (snapshot == null || !snapshot.hasTrackData() || uri == null) {
-            if (callback != null) {
-                callback.onLyricsImported("", null, "Unable to import lyrics for this track.");
-            }
-            return;
-        }
-
-        final String trackKey = snapshot.getTrackKey();
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    LyricsResult result = buildImportedLyrics(readTextFromUri(uri));
-                    if (result == null) {
-                        if (callback != null) {
-                            callback.onLyricsImported(trackKey, null, "Selected file does not contain readable lyrics.");
-                        }
-                        return;
-                    }
-
-                    writeStoredLyrics(getImportedFile(trackKey), result);
-                    memoryCache.put(trackKey, result);
-                    if (callback != null) {
-                        callback.onLyricsImported(trackKey, result, null);
-                    }
-                } catch (IOException exception) {
-                    if (callback != null) {
-                        callback.onLyricsImported(trackKey, null, exception.getMessage());
-                    }
-                }
-            }
-        });
-    }
-
-    private LyricsResult readImportedLyrics(String trackKey) {
-        return readStoredLyrics(getImportedFile(trackKey));
     }
 
     private LyricsResult readRemoteCache(String trackKey) {
@@ -262,51 +185,6 @@ public final class LyricsRepository {
         }
     }
 
-    private LyricsResult buildImportedLyrics(String rawText) {
-        String normalizedText = normalizeText(rawText);
-        if (TextUtils.isEmpty(normalizedText)) {
-            return null;
-        }
-
-        List<LyricLine> syncedLines = LrcParser.parseSyncedLyrics(normalizedText);
-        if (!syncedLines.isEmpty()) {
-            return new LyricsResult(syncedLines, "Imported LRC", true, normalizedText);
-        }
-
-        List<LyricLine> plainLines = LrcParser.parsePlainLyrics(normalizedText);
-        if (!plainLines.isEmpty()) {
-            return new LyricsResult(plainLines, "Imported text", false, normalizedText);
-        }
-
-        return null;
-    }
-
-    private String readTextFromUri(Uri uri) throws IOException {
-        InputStream inputStream = appContext.getContentResolver().openInputStream(uri);
-        if (inputStream == null) {
-            throw new IOException("Unable to open selected file.");
-        }
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "UTF-8"));
-        try {
-            StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                builder.append(line).append('\n');
-            }
-            return builder.toString();
-        } finally {
-            reader.close();
-        }
-    }
-
-    private String normalizeText(String rawText) {
-        if (rawText == null) {
-            return "";
-        }
-        return rawText.replace("\r\n", "\n").replace('\r', '\n').trim();
-    }
-
     private List<LyricLine> readLines(JSONArray array) throws JSONException {
         List<LyricLine> lines = new ArrayList<LyricLine>();
         for (int i = 0; i < array.length(); i++) {
@@ -320,11 +198,7 @@ public final class LyricsRepository {
     }
 
     private File getRemoteCacheFile(String trackKey) {
-        return new File(cacheDir, makeSafeName(trackKey) + ".json");
-    }
-
-    private File getImportedFile(String trackKey) {
-        return new File(importedDir, makeSafeName(trackKey) + ".json");
+        return new File(cacheDir, CACHE_VERSION_PREFIX + makeSafeName(trackKey) + ".json");
     }
 
     private String makeSafeName(String trackKey) {

@@ -104,7 +104,13 @@ public final class PlaybackSnapshot {
     }
 
     public String getTrackKey() {
-        return normalize(title) + "__" + normalize(artist);
+        return normalize(title)
+                + "__"
+                + normalize(artist)
+                + "__"
+                + normalize(album)
+                + "__"
+                + durationBucket(durationMs);
     }
 
     public boolean isSameTrack(PlaybackSnapshot other) {
@@ -112,6 +118,27 @@ public final class PlaybackSnapshot {
             return false;
         }
         return TextUtils.equals(getTrackKey(), other.getTrackKey());
+    }
+
+    public boolean hasArtwork() {
+        return artwork != null;
+    }
+
+    public PlaybackSnapshot mergeWithSupplementalData(Bitmap newArtwork, String newAlbum) {
+        Bitmap mergedArtwork = artwork != null ? artwork : newArtwork;
+        String mergedAlbum = !TextUtils.isEmpty(album) ? album : newAlbum;
+        return new PlaybackSnapshot(
+                packageName,
+                title,
+                artist,
+                mergedAlbum,
+                durationMs,
+                positionMs,
+                lastPositionUpdateTimeMs,
+                playing,
+                mergedArtwork,
+                sourceType
+        );
     }
 
     public PlaybackSnapshot copyWithArtwork(Bitmap newArtwork) {
@@ -135,5 +162,11 @@ public final class PlaybackSnapshot {
         }
         return value.trim().toLowerCase();
     }
-}
 
+    private static String durationBucket(long durationMs) {
+        if (durationMs <= 0L) {
+            return "0";
+        }
+        return Long.toString(durationMs / 5000L);
+    }
+}

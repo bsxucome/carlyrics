@@ -134,35 +134,10 @@
 
                     <Button
                         android:id="@+id/retryLyricsButton"
-                        android:layout_width="0dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="40dp"
-                        android:layout_marginEnd="8dp"
-                        android:layout_weight="1"
                         android:background="@drawable/bg_action_secondary"
                         android:text="@string/retry_lyrics"
-                        android:textAllCaps="false"
-                        android:textColor="@android:color/white"
-                        android:textSize="13sp" />
-
-                    <Button
-                        android:id="@+id/importLyricsButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_marginEnd="8dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_action_secondary"
-                        android:text="@string/import_lyrics"
-                        android:textAllCaps="false"
-                        android:textColor="@android:color/white"
-                        android:textSize="13sp" />
-
-                    <Button
-                        android:id="@+id/clearImportedLyricsButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:background="@drawable/bg_action_secondary"
-                        android:text="@string/clear_imported_lyrics"
                         android:textAllCaps="false"
                         android:textColor="@android:color/white"
                         android:textSize="13sp" />
@@ -292,4 +267,3 @@
     </LinearLayout>
 
 </FrameLayout>
-

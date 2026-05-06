@@ -38,6 +38,7 @@ public final class PlaybackRepository {
         this.audioManager = (AudioManager) appContext.getSystemService(Context.AUDIO_SERVICE);
         this.mainHandler = new Handler(Looper.getMainLooper());
         this.listeners = new CopyOnWriteArraySet<PlaybackListener>();
+        this.notificationAccessGranted = isNotificationAccessEnabled(appContext);
     }
 
     public static PlaybackRepository getInstance(Context context) {
@@ -56,6 +57,7 @@ public final class PlaybackRepository {
             return;
         }
         listeners.add(listener);
+        notificationAccessGranted = isNotificationAccessEnabled(appContext);
         dispatchState(listener);
     }
 
@@ -77,6 +79,17 @@ public final class PlaybackRepository {
 
     public void updateFromMediaSession(PlaybackSnapshot snapshot, MediaController controller) {
         currentController = controller;
+        PlaybackSnapshot previousSnapshot = currentSnapshot;
+        if (snapshot != null
+                && previousSnapshot != null
+                && snapshot.isSameTrack(previousSnapshot)
+                && !snapshot.hasArtwork()
+                && previousSnapshot.hasArtwork()) {
+            snapshot = snapshot.mergeWithSupplementalData(
+                    previousSnapshot.getArtwork(),
+                    previousSnapshot.getAlbum()
+            );
+        }
         currentSnapshot = snapshot;
         dispatchState();
     }
@@ -103,11 +116,14 @@ public final class PlaybackRepository {
 
         PlaybackSnapshot activeSnapshot = currentSnapshot;
         if (currentController != null && activeSnapshot != null) {
-            if (!activeSnapshot.isSameTrack(snapshot)) {
+            if (!canMergeNotificationSnapshot(activeSnapshot, snapshot)) {
                 return;
             }
-            if (activeSnapshot.getArtwork() == null && snapshot.getArtwork() != null) {
-                currentSnapshot = activeSnapshot.copyWithArtwork(snapshot.getArtwork());
+            if (!activeSnapshot.hasArtwork() && snapshot.hasArtwork()) {
+                currentSnapshot = activeSnapshot.mergeWithSupplementalData(
+                        snapshot.getArtwork(),
+                        snapshot.getAlbum()
+                );
                 dispatchState();
             }
             return;
@@ -158,7 +174,41 @@ public final class PlaybackRepository {
             return false;
         }
         ComponentName componentName = new ComponentName(context, MediaObserverService.class);
-        return enabledListeners.contains(componentName.flattenToString());
+        return enabledListeners.contains(componentName.flattenToString())
+                || enabledListeners.contains(componentName.flattenToShortString())
+                || enabledListeners.contains(context.getPackageName());
+    }
+
+    private boolean canMergeNotificationSnapshot(PlaybackSnapshot sessionSnapshot, PlaybackSnapshot notificationSnapshot) {
+        if (sessionSnapshot == null || notificationSnapshot == null) {
+            return false;
+        }
+        if (sessionSnapshot.isSameTrack(notificationSnapshot)) {
+            return true;
+        }
+
+        boolean samePackage = TextUtils.equals(
+                safeNormalize(sessionSnapshot.getPackageName()),
+                safeNormalize(notificationSnapshot.getPackageName())
+        );
+        boolean titleMatches = safeNormalize(sessionSnapshot.getTitle())
+                .equals(safeNormalize(notificationSnapshot.getTitle()));
+        boolean titleOverlaps = !TextUtils.isEmpty(sessionSnapshot.getTitle())
+                && !TextUtils.isEmpty(notificationSnapshot.getTitle())
+                && (safeNormalize(sessionSnapshot.getTitle()).contains(safeNormalize(notificationSnapshot.getTitle()))
+                || safeNormalize(notificationSnapshot.getTitle()).contains(safeNormalize(sessionSnapshot.getTitle())));
+        boolean artistCompatible = TextUtils.isEmpty(sessionSnapshot.getArtist())
+                || TextUtils.isEmpty(notificationSnapshot.getArtist())
+                || safeNormalize(sessionSnapshot.getArtist()).equals(safeNormalize(notificationSnapshot.getArtist()));
+
+        return samePackage && (titleMatches || titleOverlaps) && artistCompatible;
+    }
+
+    private String safeNormalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase();
     }
 
     private void dispatchMediaKey(int keyCode) {
@@ -186,4 +236,3 @@ public final class PlaybackRepository {
         });
     }
 }
-
