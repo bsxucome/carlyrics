@@ -71,11 +71,11 @@ public final class LyricListAdapter extends BaseAdapter {
         textView.setText(line.getText());
         textView.setTextColor(active ? 0xFFFFFFFF : 0xA8FFFFFF);
         textView.setTypeface(null, active ? Typeface.BOLD : Typeface.NORMAL);
-        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, active ? 30f : 21f);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, active ? 20f : 15f);
         textView.setAlpha(active ? 1f : 0.72f);
         textView.setScaleX(active ? 1f : 0.98f);
         textView.setScaleY(active ? 1f : 0.98f);
-        textView.setShadowLayer(active ? 18f : 0f, 0f, 0f, active ? 0x66FFFFFF : 0x00000000);
+        textView.setShadowLayer(active ? 10f : 0f, 0f, 0f, active ? 0x66FFFFFF : 0x00000000);
         return convertView;
     }
 }

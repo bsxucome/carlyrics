@@ -8,7 +8,7 @@
         android:id="@+id/backgroundArtworkView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:alpha="0.34"
+        android:alpha="0.30"
         android:contentDescription="@string/artwork_desc"
         android:scaleType="centerCrop" />
 
@@ -21,23 +21,23 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="18dp">
+        android:padding="14dp">
 
         <LinearLayout
             android:id="@+id/permissionPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="14dp"
+            android:layout_marginBottom="10dp"
             android:background="@drawable/bg_panel"
             android:orientation="vertical"
-            android:padding="14dp">
+            android:padding="12dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/permission_title"
                 android:textColor="@android:color/white"
-                android:textSize="18sp"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -46,19 +46,19 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="@string/permission_desc"
-                android:textColor="#CCFFFFFF"
-                android:textSize="14sp" />
+                android:textColor="#CCE7F7FF"
+                android:textSize="12sp" />
 
             <Button
                 android:id="@+id/openPermissionButton"
                 android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
+                android:layout_height="42dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_action_primary"
                 android:text="@string/open_permission"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
-                android:textSize="16sp" />
+                android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -70,18 +70,17 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_marginEnd="14dp"
-                android:layout_weight="0.4"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="0.37"
                 android:background="@drawable/bg_panel"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:padding="18dp">
+                android:padding="16dp">
 
                 <ImageView
                     android:id="@+id/artworkView"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
+                    android:layout_height="match_parent"
                     android:adjustViewBounds="true"
                     android:contentDescription="@string/artwork_desc"
                     android:scaleType="centerCrop"
@@ -91,10 +90,13 @@
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="0.6"
+                android:layout_weight="0.63"
                 android:background="@drawable/bg_panel"
                 android:orientation="vertical"
-                android:padding="18dp">
+                android:paddingLeft="22dp"
+                android:paddingTop="18dp"
+                android:paddingRight="22dp"
+                android:paddingBottom="18dp">
 
                 <TextView
                     android:id="@+id/titleView"
@@ -103,90 +105,153 @@
                     android:maxLines="2"
                     android:text="@string/default_title"
                     android:textColor="@android:color/white"
-                    android:textSize="28sp"
+                    android:textSize="34sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/artistView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="8dp"
                     android:maxLines="1"
                     android:text="@string/default_artist"
-                    android:textColor="#E6FFFFFF"
-                    android:textSize="18sp" />
+                    android:textColor="#EDF7FFFF"
+                    android:textSize="20sp" />
 
                 <TextView
                     android:id="@+id/sourceView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:maxLines="1"
                     android:text="@string/default_source"
-                    android:textColor="#9CE8FBFF"
-                    android:textSize="13sp" />
+                    android:textColor="#89BED8F3"
+                    android:textSize="12sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <Button
                         android:id="@+id/retryLyricsButton"
                         android:layout_width="wrap_content"
-                        android:layout_height="40dp"
+                        android:layout_height="30dp"
                         android:background="@drawable/bg_action_secondary"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
                         android:text="@string/retry_lyrics"
                         android:textAllCaps="false"
-                        android:textColor="@android:color/white"
-                        android:textSize="13sp" />
+                        android:textColor="#D9F5FF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/lyricsStatusView"
+                        android:layout_width="wrap_content"
+                        android:layout_height="26dp"
+                        android:layout_marginStart="12dp"
+                        android:background="@drawable/bg_lyrics_chip"
+                        android:gravity="center_vertical"
+                        android:paddingLeft="10dp"
+                        android:paddingRight="10dp"
+                        android:text="@string/default_lyrics_status"
+                        android:textColor="#B8DFF4"
+                        android:textSize="9sp" />
                 </LinearLayout>
 
-                <TextView
-                    android:id="@+id/lyricsStatusView"
+                <LinearLayout
+                    android:id="@+id/lyricsStage"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/default_lyrics_status"
-                    android:textColor="#D8F4FFFF"
-                    android:textSize="14sp" />
+                    android:layout_height="196dp"
+                    android:layout_marginTop="18dp"
+                    android:gravity="top"
+                    android:orientation="vertical">
 
-                <ListView
-                    android:id="@+id/lyricsListView"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_marginTop="12dp"
-                    android:layout_weight="1"
-                    android:background="@android:color/transparent"
-                    android:divider="@android:color/transparent"
-                    android:dividerHeight="0dp"
-                    android:fastScrollEnabled="false"
-                    android:padding="0dp"
-                    android:scrollbars="none" />
+                    <TextView
+                        android:id="@+id/lyricLineTop"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_horizontal"
+                        android:paddingTop="0dp"
+                        android:paddingBottom="0dp"
+                        android:textColor="#618EAC"
+                        android:textSize="1sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/lyricLineUpper"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_horizontal"
+                        android:paddingTop="0dp"
+                        android:paddingBottom="0dp"
+                        android:textColor="#89B2CC"
+                        android:textSize="1sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/lyricLineCurrent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:layout_marginBottom="16dp"
+                        android:background="@drawable/bg_lyric_focus"
+                        android:gravity="center_horizontal"
+                        android:minHeight="62dp"
+                        android:paddingLeft="18dp"
+                        android:paddingTop="12dp"
+                        android:paddingRight="18dp"
+                        android:paddingBottom="12dp"
+                        android:textColor="@android:color/white"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/lyricLineLower"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_horizontal"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp"
+                        android:textColor="#89B2CC"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/lyricLineBottom"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_horizontal"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp"
+                        android:textColor="#618EAC"
+                        android:textSize="16sp" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/diagnosticsView"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:maxLines="4"
                     android:text="@string/default_diagnostics"
                     android:textColor="#80FFFFFF"
-                    android:textSize="11sp"
+                    android:textSize="10sp"
                     android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
+            android:layout_height="146dp"
+            android:layout_marginTop="12dp"
             android:background="@drawable/bg_panel"
+            android:gravity="center_vertical"
             android:orientation="vertical"
-            android:paddingLeft="20dp"
-            android:paddingTop="16dp"
-            android:paddingRight="20dp"
+            android:paddingLeft="18dp"
+            android:paddingTop="14dp"
+            android:paddingRight="18dp"
             android:paddingBottom="16dp">
 
             <LinearLayout
@@ -201,15 +266,16 @@
                     android:layout_height="wrap_content"
                     android:text="00:00"
                     android:textColor="@android:color/white"
-                    android:textSize="15sp" />
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
 
                 <ProgressBar
                     android:id="@+id/progressBar"
                     style="?android:attr/progressBarStyleHorizontal"
                     android:layout_width="0dp"
                     android:layout_height="10dp"
-                    android:layout_marginLeft="12dp"
-                    android:layout_marginRight="12dp"
+                    android:layout_marginLeft="14dp"
+                    android:layout_marginRight="14dp"
                     android:layout_weight="1"
                     android:max="1000"
                     android:progress="0"
@@ -221,21 +287,22 @@
                     android:layout_height="wrap_content"
                     android:text="00:00"
                     android:textColor="@android:color/white"
-                    android:textSize="15sp" />
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="18dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
                 <ImageButton
                     android:id="@+id/previousButton"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:layout_marginRight="22dp"
+                    android:layout_width="62dp"
+                    android:layout_height="62dp"
+                    android:layout_marginRight="26dp"
                     android:background="@drawable/bg_media_button_secondary"
                     android:contentDescription="@string/previous"
                     android:padding="18dp"
@@ -246,7 +313,7 @@
                     android:id="@+id/playPauseButton"
                     android:layout_width="84dp"
                     android:layout_height="84dp"
-                    android:layout_marginRight="22dp"
+                    android:layout_marginRight="26dp"
                     android:background="@drawable/bg_media_button_primary"
                     android:contentDescription="@string/play"
                     android:padding="22dp"
@@ -255,8 +322,8 @@
 
                 <ImageButton
                     android:id="@+id/nextButton"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
+                    android:layout_width="62dp"
+                    android:layout_height="62dp"
                     android:background="@drawable/bg_media_button_secondary"
                     android:contentDescription="@string/next"
                     android:padding="18dp"
