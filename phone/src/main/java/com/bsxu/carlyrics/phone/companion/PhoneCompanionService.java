@@ -25,6 +25,7 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 
+import com.bsxu.carlyrics.phone.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ControlMessage;
@@ -107,7 +108,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         super.onCreate();
         lyricsRepository = new PhoneLyricsRepository();
         mainHandler.post(heartbeatSender);
-        updateUiStatus("Status: waiting for notification access");
+        updateUiStatus(getString(R.string.status_waiting_notification_access));
         Log.i(TAG, "PhoneCompanionService created");
     }
 
@@ -128,8 +129,8 @@ public class PhoneCompanionService extends NotificationListenerService {
         publishBestControllerSnapshot();
         Log.i(TAG, "Notification listener connected");
         updateUiStatus(clientSocket == null
-                ? "Status: ready, waiting for the head unit to connect"
-                : "Status: connected to " + connectedClientName);
+                ? getString(R.string.status_ready)
+                : getString(R.string.status_connected_to, connectedClientName));
     }
 
     @Override
@@ -141,7 +142,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         currentLyricsResult = null;
         currentTrackKey = "";
         Log.i(TAG, "Notification listener disconnected");
-        updateUiStatus("Status: notification access disconnected");
+        updateUiStatus(getString(R.string.status_notification_disconnected));
         super.onListenerDisconnected();
     }
 
@@ -419,18 +420,18 @@ public class PhoneCompanionService extends NotificationListenerService {
     private void startBluetoothServer() {
         if (!hasBluetoothPermission()) {
             Log.w(TAG, "Bluetooth permission missing");
-            updateUiStatus("Status: Bluetooth permission is missing");
+            updateUiStatus(getString(R.string.status_bluetooth_missing_runtime));
             return;
         }
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) {
             Log.w(TAG, "Bluetooth adapter not available");
-            updateUiStatus("Status: Bluetooth is not available");
+            updateUiStatus(getString(R.string.status_bluetooth_not_available));
             return;
         }
         if (!adapter.isEnabled()) {
             Log.w(TAG, "Bluetooth adapter disabled");
-            updateUiStatus("Status: turn Bluetooth on, then wait for the head unit");
+            updateUiStatus(getString(R.string.status_turn_on_bluetooth));
             return;
         }
         if (serverSocket != null || insecureServerSocket != null) {
@@ -445,7 +446,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             Log.i(TAG, "Secure RFCOMM server opened");
         } catch (IOException error) {
             Log.e(TAG, "Failed to open secure Bluetooth server", error);
-            updateUiStatus("Status: failed to open Bluetooth server");
+            updateUiStatus(getString(R.string.status_bluetooth_server_failed));
         }
 
         try {
@@ -459,7 +460,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         }
 
         if (serverSocket == null && insecureServerSocket == null) {
-            updateUiStatus("Status: failed to open Bluetooth server");
+            updateUiStatus(getString(R.string.status_bluetooth_server_failed));
             return;
         }
 
@@ -532,7 +533,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             writeLine(BridgeCodec.encodeHello(new HelloMessage(
                     BridgeContract.ROLE_PHONE,
                     safeName(Build.MODEL),
-                    "0.1.0"
+                    "0.2.0"
             )));
             sendPlaybackSnapshot(true);
             sendLyricsPayload();
@@ -541,11 +542,11 @@ public class PhoneCompanionService extends NotificationListenerService {
                 requestLyricsForCurrentTrack(false);
             }
             Log.i(TAG, "Client connected via " + modeLabel + " RFCOMM from " + connectedClientName);
-            updateUiStatus("Status: connected to " + connectedClientName);
+            updateUiStatus(getString(R.string.status_connected_to, connectedClientName));
         } catch (IOException error) {
             Log.e(TAG, "Failed while preparing connected client session", error);
             closeClientConnection();
-            updateUiStatus("Status: waiting for the head unit to reconnect");
+            updateUiStatus(getString(R.string.status_waiting_reconnect));
             return;
         }
 
@@ -575,7 +576,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             closeReaderQuietly(reader);
             closeClientConnection();
             Log.i(TAG, "Client disconnected");
-            updateUiStatus("Status: ready, waiting for the head unit to connect");
+            updateUiStatus(getString(R.string.status_ready));
         }
     }
 
@@ -675,7 +676,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             activeWriter.flush();
         } catch (IOException ignored) {
             closeClientConnection();
-            updateUiStatus("Status: ready, waiting for the head unit to connect");
+            updateUiStatus(getString(R.string.status_ready));
         }
     }
 
@@ -749,7 +750,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     }
 
     private String safeName(String value) {
-        return TextUtils.isEmpty(value) ? "Phone" : value;
+        return TextUtils.isEmpty(value) ? getString(R.string.generic_phone_device) : value;
     }
 
     private void updateUiStatus(String value) {

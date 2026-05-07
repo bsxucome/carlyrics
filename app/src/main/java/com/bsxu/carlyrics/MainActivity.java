@@ -2,8 +2,10 @@ package com.bsxu.carlyrics;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -33,6 +35,8 @@ import com.bsxu.carlyrics.model.LyricLine;
 import com.bsxu.carlyrics.ui.ArtworkBackdropFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -295,12 +299,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             companionManager.reconnectLastDevice();
             return;
         }
-        List<BluetoothDevice> devices = companionManager.getBondedDevices();
-        Log.i(TAG, "Bonded device count for auto-connect=" + devices.size());
-        if (!devices.isEmpty()) {
-            showConnectionMessage(getString(R.string.connecting_to_phone_candidates, devices.size()));
-            companionManager.connectBondedDevicesInPriorityOrder(devices);
-        }
+        Log.i(TAG, "Skip auto-connect because no remembered phone companion is available");
     }
 
     private void openBondedDevicePicker() {
@@ -312,17 +311,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                 Toast.makeText(this, R.string.no_paired_devices, Toast.LENGTH_SHORT).show();
                 return;
             }
-
-            if (devices.size() == 1) {
-                String address = safeDeviceAddress(devices.get(0));
-                String name = safeDeviceName(devices.get(0));
-                showConnectionMessage(getString(R.string.connecting_to_phone, emptyFallback(name, address)));
-                Log.d(TAG, "Auto connecting to single paired device: " + address + " / " + name);
-            } else {
-                showConnectionMessage(getString(R.string.connecting_to_phone_candidates, devices.size()));
-                Log.d(TAG, "Trying paired phone candidates count=" + devices.size());
-            }
-            companionManager.connectBondedDevicesInPriorityOrder(devices);
+            showBondedDevicePickerDialog(devices);
         } catch (SecurityException permissionError) {
             Log.e(TAG, "Bluetooth permission error while opening paired-device picker", permissionError);
             showConnectionMessage(getString(R.string.bluetooth_permission_required));
@@ -332,6 +321,61 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             showConnectionMessage(getString(R.string.bluetooth_connect_failed));
             Toast.makeText(this, R.string.bluetooth_connect_failed, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void showBondedDevicePickerDialog(List<BluetoothDevice> devices) {
+        final List<BluetoothDevice> orderedDevices = new ArrayList<BluetoothDevice>(devices);
+        final String lastDeviceAddress = companionManager.getLastDeviceAddress();
+        Collections.sort(orderedDevices, new Comparator<BluetoothDevice>() {
+            @Override
+            public int compare(BluetoothDevice first, BluetoothDevice second) {
+                String firstAddress = safeDeviceAddress(first);
+                String secondAddress = safeDeviceAddress(second);
+                boolean firstIsLast = TextUtils.equals(firstAddress, lastDeviceAddress);
+                boolean secondIsLast = TextUtils.equals(secondAddress, lastDeviceAddress);
+                if (firstIsLast != secondIsLast) {
+                    return firstIsLast ? -1 : 1;
+                }
+                String firstName = emptyFallback(safeDeviceName(first), firstAddress);
+                String secondName = emptyFallback(safeDeviceName(second), secondAddress);
+                return firstName.compareToIgnoreCase(secondName);
+            }
+        });
+
+        final String[] labels = new String[orderedDevices.size()];
+        for (int i = 0; i < orderedDevices.size(); i++) {
+            BluetoothDevice device = orderedDevices.get(i);
+            String address = safeDeviceAddress(device);
+            String name = emptyFallback(safeDeviceName(device), getString(R.string.unnamed_bluetooth_device));
+            if (TextUtils.equals(address, lastDeviceAddress)) {
+                labels[i] = getString(R.string.paired_device_item_last_used, name, address);
+            } else {
+                labels[i] = getString(R.string.paired_device_item, name, address);
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.select_phone_companion)
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which < 0 || which >= orderedDevices.size()) {
+                            return;
+                        }
+                        BluetoothDevice selectedDevice = orderedDevices.get(which);
+                        String address = safeDeviceAddress(selectedDevice);
+                        String name = emptyFallback(safeDeviceName(selectedDevice), address);
+                        if (TextUtils.isEmpty(address)) {
+                            Toast.makeText(MainActivity.this, R.string.bluetooth_connect_failed, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        showConnectionMessage(getString(R.string.connecting_to_phone, name));
+                        Log.d(TAG, "User selected paired device: " + address + " / " + name);
+                        companionManager.connect(address);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void renderSession(HeadUnitSessionSnapshot snapshot) {
@@ -539,26 +583,29 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         }
 
         StringBuilder builder = new StringBuilder();
-        builder.append("Connection: ")
+        builder.append(getString(R.string.diagnostics_connection_label))
                 .append(currentSession.connectionLabel)
                 .append('\n');
         if (currentSession.playbackPayload != null) {
-            builder.append("Package: ")
+            builder.append(getString(R.string.diagnostics_package_label))
                     .append(emptyFallback(currentSession.playbackPayload.packageName, "n/a"))
                     .append('\n');
-            builder.append("Track: ")
+            builder.append(getString(R.string.diagnostics_track_label))
                     .append(emptyFallback(currentSession.playbackPayload.trackKey, "n/a"))
                     .append('\n');
         }
-        builder.append("Lyrics: ");
+        builder.append(getString(R.string.diagnostics_lyrics_label));
         if (currentSession.lyricsPayload == null) {
-            builder.append("waiting");
+            builder.append(getString(R.string.diagnostics_waiting));
         } else {
             builder.append(currentSession.lyricsPayload.sourceLabel)
-                    .append(currentSession.lyricsPayload.synced ? " | synced" : " | plain")
-                    .append(" | ")
+                    .append(currentSession.lyricsPayload.synced
+                            ? getString(R.string.diagnostics_synced_suffix)
+                            : getString(R.string.diagnostics_plain_suffix))
+                    .append(getString(R.string.diagnostics_separator))
                     .append(currentSession.lyricsPayload.lines.size())
-                    .append(" lines");
+                    .append(' ')
+                    .append(getString(R.string.diagnostics_lines_suffix));
         }
         diagnosticsView.setText(builder.toString());
     }

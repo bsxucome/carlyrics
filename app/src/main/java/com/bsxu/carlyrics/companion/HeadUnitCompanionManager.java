@@ -16,6 +16,7 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 
+import com.bsxu.carlyrics.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ControlMessage;
@@ -78,7 +79,7 @@ public final class HeadUnitCompanionManager {
         this.writeLock = new Object();
         this.sharedPreferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.connectionState = ConnectionState.DISCONNECTED;
-        this.connectionLabel = "Phone companion not connected";
+        this.connectionLabel = string(R.string.connection_state_not_connected);
     }
 
     public static HeadUnitCompanionManager getInstance(Context context) {
@@ -163,12 +164,12 @@ public final class HeadUnitCompanionManager {
         }
         ArrayList<String> addresses = new ArrayList<String>();
         addresses.add(deviceAddress);
-        connectCandidates(addresses, "Connecting to phone companion...");
+        connectCandidates(addresses, string(R.string.connection_state_connecting_generic), false);
     }
 
     public void connectBondedDevicesInPriorityOrder(List<BluetoothDevice> devices) {
         if (devices == null || devices.isEmpty()) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "No paired phone devices found");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.no_paired_devices));
             return;
         }
         List<BluetoothDevice> orderedDevices = new ArrayList<BluetoothDevice>(devices);
@@ -188,25 +189,25 @@ public final class HeadUnitCompanionManager {
             } catch (SecurityException ignored) {
             }
         }
-        connectCandidates(addresses, "Trying paired phone connections...");
+        connectCandidates(addresses, string(R.string.connection_state_trying_paired), false);
     }
 
-    private void connectCandidates(final List<String> deviceAddresses, String startingLabel) {
+    private void connectCandidates(final List<String> deviceAddresses, String startingLabel, final boolean forgetCandidatesOnFailure) {
         if (deviceAddresses == null || deviceAddresses.isEmpty()) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "No paired phone devices found");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.no_paired_devices));
             return;
         }
         Log.d(TAG, "connectCandidates size=" + deviceAddresses.size());
         if (!hasBluetoothAdapter()) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "Bluetooth is not available");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.bluetooth_not_available));
             return;
         }
         if (!isBluetoothEnabled()) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "Bluetooth is disabled");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.bluetooth_disabled_state));
             return;
         }
         if (!hasRequiredBluetoothPermission()) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "Bluetooth permission required");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.bluetooth_permission_required));
             return;
         }
 
@@ -226,7 +227,12 @@ public final class HeadUnitCompanionManager {
                         Log.d(TAG, "Trying candidate " + (index + 1) + "/" + deviceAddresses.size() + " address=" + deviceAddress + " name=" + deviceName);
                         updateConnectionState(
                                 ConnectionState.CONNECTING,
-                                "Trying " + deviceName + " (" + (index + 1) + "/" + deviceAddresses.size() + ")..."
+                                string(
+                                        R.string.connection_state_trying_device,
+                                        deviceName,
+                                        index + 1,
+                                        deviceAddresses.size()
+                                )
                         );
                         localSocket = connectSocketWithFallback(adapter, device);
                         sharedPreferences.edit()
@@ -245,12 +251,15 @@ public final class HeadUnitCompanionManager {
                     } catch (SecurityException permissionError) {
                         Log.e(TAG, "Bluetooth permission missing during connect", permissionError);
                         closeSocketQuietly(localSocket);
-                        updateConnectionState(ConnectionState.DISCONNECTED, "Bluetooth permission is missing");
+                        updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.bluetooth_permission_required));
                         return;
                     }
                 }
                 Log.d(TAG, "No paired device accepted the RFCOMM connection");
-                updateConnectionState(ConnectionState.DISCONNECTED, "Unable to reach any paired phone companion");
+                if (forgetCandidatesOnFailure) {
+                    clearRememberedDevice(deviceAddresses);
+                }
+                updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_unreachable));
             }
         }, "headunit-bt-connect");
         connectThread.start();
@@ -260,7 +269,9 @@ public final class HeadUnitCompanionManager {
         String lastAddress = getLastDeviceAddress();
         if (!TextUtils.isEmpty(lastAddress)) {
             Log.d(TAG, "Reconnecting last device " + lastAddress);
-            connect(lastAddress);
+            ArrayList<String> addresses = new ArrayList<String>();
+            addresses.add(lastAddress);
+            connectCandidates(addresses, string(R.string.connection_state_reconnecting_last), true);
         }
     }
 
@@ -275,9 +286,9 @@ public final class HeadUnitCompanionManager {
         playbackReceivedElapsedMs = 0L;
         String deviceName = sharedPreferences.getString(KEY_LAST_DEVICE_NAME, "");
         if (TextUtils.isEmpty(deviceName)) {
-            updateConnectionState(ConnectionState.DISCONNECTED, "Phone companion not connected");
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_not_connected));
         } else {
-            updateConnectionState(ConnectionState.DISCONNECTED, "Disconnected from " + deviceName);
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_disconnected_from, deviceName));
         }
     }
 
@@ -303,13 +314,13 @@ public final class HeadUnitCompanionManager {
     private void onSocketConnected(BluetoothSocket localSocket, String deviceName) throws IOException {
         socket = localSocket;
         writer = new BufferedWriter(new OutputStreamWriter(localSocket.getOutputStream(), "UTF-8"));
-        updateConnectionState(ConnectionState.CONNECTED, "Connected to " + deviceName);
+        updateConnectionState(ConnectionState.CONNECTED, string(R.string.connection_state_connected_to, deviceName));
 
         synchronized (writeLock) {
             writer.write(BridgeCodec.encodeHello(new HelloMessage(
                     BridgeContract.ROLE_HEADUNIT,
-                    Build.MODEL == null ? "Head unit" : Build.MODEL,
-                    "0.1.1"
+                    Build.MODEL == null ? string(R.string.head_unit_device_fallback) : Build.MODEL,
+                    "0.2.0"
             )));
             writer.write('\n');
             writer.flush();
@@ -416,7 +427,28 @@ public final class HeadUnitCompanionManager {
     }
 
     private String safeName(String name) {
-        return TextUtils.isEmpty(name) ? "Phone" : name;
+        return TextUtils.isEmpty(name) ? string(R.string.generic_phone_device) : name;
+    }
+
+    private String string(int resId, Object... args) {
+        return appContext.getString(resId, args);
+    }
+
+    private void clearRememberedDevice(List<String> attemptedAddresses) {
+        String rememberedAddress = getLastDeviceAddress();
+        if (TextUtils.isEmpty(rememberedAddress) || attemptedAddresses == null || attemptedAddresses.isEmpty()) {
+            return;
+        }
+        for (String attemptedAddress : attemptedAddresses) {
+            if (TextUtils.equals(rememberedAddress, attemptedAddress)) {
+                Log.d(TAG, "Forgetting unreachable remembered device " + rememberedAddress);
+                sharedPreferences.edit()
+                        .remove(KEY_LAST_DEVICE_ADDRESS)
+                        .remove(KEY_LAST_DEVICE_NAME)
+                        .apply();
+                return;
+            }
+        }
     }
 
     private void closeSocketQuietly(BluetoothSocket bluetoothSocket) {
