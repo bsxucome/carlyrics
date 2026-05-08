@@ -24,6 +24,7 @@ import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
+import com.bsxu.carlyrics.bridge.RemoteSessionStatusPayload;
 
 import org.json.JSONException;
 
@@ -59,6 +60,7 @@ public final class HeadUnitCompanionManager {
     private final CopyOnWriteArraySet<Listener> listeners;
     private final Object writeLock;
     private final SharedPreferences sharedPreferences;
+    private final HeadUnitIdentityStore identityStore;
 
     private volatile BluetoothSocket socket;
     private volatile BufferedWriter writer;
@@ -67,10 +69,13 @@ public final class HeadUnitCompanionManager {
 
     private volatile int connectionState;
     private volatile String connectionLabel;
+    private volatile RemoteSessionStatusPayload sessionStatusPayload;
     private volatile RemotePlaybackPayload playbackPayload;
     private volatile RemoteLyricsPayload lyricsPayload;
     private volatile Bitmap artworkBitmap;
     private volatile long playbackReceivedElapsedMs;
+    private volatile String connectedDeviceAddress = "";
+    private volatile String connectedDeviceName = "";
 
     private HeadUnitCompanionManager(Context context) {
         this.appContext = context.getApplicationContext();
@@ -78,6 +83,7 @@ public final class HeadUnitCompanionManager {
         this.listeners = new CopyOnWriteArraySet<Listener>();
         this.writeLock = new Object();
         this.sharedPreferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this.identityStore = new HeadUnitIdentityStore(appContext);
         this.connectionState = ConnectionState.DISCONNECTED;
         this.connectionLabel = string(R.string.connection_state_not_connected);
     }
@@ -112,6 +118,7 @@ public final class HeadUnitCompanionManager {
         return new HeadUnitSessionSnapshot(
                 connectionState,
                 connectionLabel,
+                sessionStatusPayload,
                 playbackPayload,
                 lyricsPayload,
                 artworkBitmap,
@@ -156,6 +163,38 @@ public final class HeadUnitCompanionManager {
 
     public String getLastDeviceAddress() {
         return sharedPreferences.getString(KEY_LAST_DEVICE_ADDRESS, "");
+    }
+
+    public String getPrimaryTrustedDeviceAddress() {
+        return identityStore.getPrimaryTrustedBluetoothAddress();
+    }
+
+    public String getPrimaryTrustedDeviceName() {
+        return identityStore.getPrimaryTrustedDeviceName();
+    }
+
+    public boolean hasPrimaryTrustedDevice() {
+        return identityStore.hasPrimaryTrustedDevice();
+    }
+
+    public boolean isPrimaryTrustedAddress(String address) {
+        return identityStore.isPrimaryTrustedAddress(address);
+    }
+
+    public void forgetPrimaryTrustedDevice() {
+        String trustedAddress = identityStore.getPrimaryTrustedBluetoothAddress();
+        identityStore.clearPrimaryTrustedRemote();
+        if (TextUtils.equals(trustedAddress, getLastDeviceAddress())) {
+            sharedPreferences.edit()
+                    .remove(KEY_LAST_DEVICE_ADDRESS)
+                    .remove(KEY_LAST_DEVICE_NAME)
+                    .apply();
+        }
+        if (TextUtils.equals(trustedAddress, connectedDeviceAddress)) {
+            disconnect();
+        } else {
+            updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_not_connected));
+        }
     }
 
     public void connect(final String deviceAddress) {
@@ -235,12 +274,8 @@ public final class HeadUnitCompanionManager {
                                 )
                         );
                         localSocket = connectSocketWithFallback(adapter, device);
-                        sharedPreferences.edit()
-                                .putString(KEY_LAST_DEVICE_ADDRESS, device.getAddress())
-                                .putString(KEY_LAST_DEVICE_NAME, deviceName)
-                                .apply();
                         Log.d(TAG, "Bluetooth socket connected to " + deviceName + " / " + deviceAddress);
-                        onSocketConnected(localSocket, deviceName);
+                        onSocketConnected(localSocket, deviceAddress, deviceName);
                         return;
                     } catch (IOException connectionError) {
                         Log.w(TAG, "Connection failed for candidate address=" + deviceAddress, connectionError);
@@ -266,24 +301,33 @@ public final class HeadUnitCompanionManager {
     }
 
     public void reconnectLastDevice() {
-        String lastAddress = getLastDeviceAddress();
-        if (!TextUtils.isEmpty(lastAddress)) {
-            Log.d(TAG, "Reconnecting last device " + lastAddress);
+        String trustedAddress = getPrimaryTrustedDeviceAddress();
+        if (!TextUtils.isEmpty(trustedAddress)) {
+            Log.d(TAG, "Reconnecting primary trusted device " + trustedAddress);
             ArrayList<String> addresses = new ArrayList<String>();
-            addresses.add(lastAddress);
+            addresses.add(trustedAddress);
             connectCandidates(addresses, string(R.string.connection_state_reconnecting_last), true);
         }
     }
 
     public void disconnect() {
+        Log.d(
+                TAG,
+                "disconnect() state=" + connectionState
+                        + " connectedDevice=" + connectedDeviceName
+                        + " / " + connectedDeviceAddress
+        );
         closeSocketQuietly(socket);
         socket = null;
         writer = null;
         readThread = null;
         playbackPayload = null;
         lyricsPayload = null;
+        sessionStatusPayload = null;
         artworkBitmap = null;
         playbackReceivedElapsedMs = 0L;
+        connectedDeviceAddress = "";
+        connectedDeviceName = "";
         String deviceName = sharedPreferences.getString(KEY_LAST_DEVICE_NAME, "");
         if (TextUtils.isEmpty(deviceName)) {
             updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_not_connected));
@@ -311,13 +355,17 @@ public final class HeadUnitCompanionManager {
         }
     }
 
-    private void onSocketConnected(BluetoothSocket localSocket, String deviceName) throws IOException {
+    private void onSocketConnected(BluetoothSocket localSocket, String deviceAddress, String deviceName) throws IOException {
         socket = localSocket;
+        connectedDeviceAddress = deviceAddress == null ? "" : deviceAddress;
+        connectedDeviceName = deviceName == null ? "" : deviceName;
         writer = new BufferedWriter(new OutputStreamWriter(localSocket.getOutputStream(), "UTF-8"));
         updateConnectionState(ConnectionState.CONNECTED, string(R.string.connection_state_connected_to, deviceName));
 
         synchronized (writeLock) {
             writer.write(BridgeCodec.encodeHello(new HelloMessage(
+                    BridgeContract.PROTOCOL_VERSION,
+                    identityStore.getOrCreateLocalAppDeviceId(),
                     BridgeContract.ROLE_HEADUNIT,
                     Build.MODEL == null ? string(R.string.head_unit_device_fallback) : Build.MODEL,
                     "0.2.0"
@@ -349,6 +397,7 @@ public final class HeadUnitCompanionManager {
             }
         } catch (IOException ignored) {
         } finally {
+            Log.d(TAG, "readLoop() finished for " + connectedDeviceName + " / " + connectedDeviceAddress);
             closeReaderQuietly(reader);
             disconnect();
         }
@@ -357,6 +406,22 @@ public final class HeadUnitCompanionManager {
     private void handleIncomingLine(String line) {
         try {
             DecodedMessage decodedMessage = BridgeCodec.decode(line);
+            if (BridgeContract.TYPE_HELLO.equals(decodedMessage.type) && decodedMessage.helloMessage != null) {
+                handleRemoteHello(decodedMessage.helloMessage);
+                return;
+            }
+            if (BridgeContract.TYPE_SESSION_STATUS.equals(decodedMessage.type) && decodedMessage.sessionStatusPayload != null) {
+                sessionStatusPayload = decodedMessage.sessionStatusPayload;
+                Log.d(
+                        TAG,
+                        "Received session status notif=" + sessionStatusPayload.notificationAccessGranted
+                                + " media=" + sessionStatusPayload.mediaSessionReadable
+                                + " playback=" + sessionStatusPayload.playbackAvailable
+                                + " lyrics=" + sessionStatusPayload.lyricsAvailable
+                );
+                dispatchSnapshot();
+                return;
+            }
             if (BridgeContract.TYPE_PLAYBACK.equals(decodedMessage.type)) {
                 playbackPayload = decodedMessage.playbackPayload;
                 playbackReceivedElapsedMs = android.os.SystemClock.elapsedRealtime();
@@ -390,6 +455,21 @@ public final class HeadUnitCompanionManager {
             }
         } catch (JSONException ignored) {
         }
+    }
+
+    private void handleRemoteHello(HelloMessage helloMessage) {
+        if (helloMessage == null) {
+            return;
+        }
+        identityStore.rememberTrustedRemote(helloMessage, connectedDeviceAddress, connectedDeviceName);
+        rememberLastSuccessfulDevice(connectedDeviceAddress, connectedDeviceName);
+        Log.d(
+                TAG,
+                "Received hello role=" + helloMessage.role
+                        + " device=" + helloMessage.deviceName
+                        + " protocol=" + helloMessage.protocolVersion
+                        + " remoteAppDeviceId=" + helloMessage.appDeviceId
+        );
     }
 
     private Bitmap decodeArtwork(String artworkBase64, Bitmap fallback) {
@@ -446,9 +526,22 @@ public final class HeadUnitCompanionManager {
                         .remove(KEY_LAST_DEVICE_ADDRESS)
                         .remove(KEY_LAST_DEVICE_NAME)
                         .apply();
+                if (identityStore.isPrimaryTrustedAddress(rememberedAddress)) {
+                    identityStore.clearPrimaryTrustedRemote();
+                }
                 return;
             }
         }
+    }
+
+    private void rememberLastSuccessfulDevice(String deviceAddress, String deviceName) {
+        if (TextUtils.isEmpty(deviceAddress)) {
+            return;
+        }
+        sharedPreferences.edit()
+                .putString(KEY_LAST_DEVICE_ADDRESS, deviceAddress)
+                .putString(KEY_LAST_DEVICE_NAME, safeName(deviceName))
+                .apply();
     }
 
     private void closeSocketQuietly(BluetoothSocket bluetoothSocket) {
@@ -517,7 +610,10 @@ public final class HeadUnitCompanionManager {
         }
         int score = 0;
         try {
-            if (TextUtils.equals(device.getAddress(), getLastDeviceAddress())) {
+            String deviceAddress = device.getAddress();
+            if (TextUtils.equals(deviceAddress, getPrimaryTrustedDeviceAddress())) {
+                score += 1500;
+            } else if (TextUtils.equals(deviceAddress, getLastDeviceAddress())) {
                 score += 1000;
             }
         } catch (SecurityException ignored) {

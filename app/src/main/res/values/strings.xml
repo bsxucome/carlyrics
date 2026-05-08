@@ -41,7 +41,10 @@
     <string name="select_phone_companion">Select paired phone</string>
     <string name="paired_device_item">%1$s\n%2$s</string>
     <string name="paired_device_item_last_used">%1$s (last used)\n%2$s</string>
+    <string name="paired_device_item_primary">%1$s (primary trusted)\n%2$s</string>
     <string name="unnamed_bluetooth_device">Unnamed device</string>
+    <string name="forget_trusted_phone">Forget trusted phone</string>
+    <string name="trusted_phone_forgotten">Trusted phone removed</string>
     <string name="bluetooth_not_available">Bluetooth is not available on this device.</string>
     <string name="bluetooth_enable_required">Enable Bluetooth to connect to the phone companion.</string>
     <string name="bluetooth_disabled_state">Bluetooth is disabled.</string>
@@ -67,4 +70,18 @@
     <string name="diagnostics_plain_suffix"> | plain</string>
     <string name="diagnostics_separator"> | </string>
     <string name="diagnostics_lines_suffix">lines</string>
+    <string name="diagnostics_phone_state_label">Phone: </string>
+    <string name="diagnostics_notif_on">notif:on</string>
+    <string name="diagnostics_notif_off">notif:off</string>
+    <string name="diagnostics_media_on">media:on</string>
+    <string name="diagnostics_media_off">media:off</string>
+    <string name="diagnostics_playback_on">playback:on</string>
+    <string name="diagnostics_playback_off">playback:off</string>
+    <string name="diagnostics_remote_lyrics_on">lyrics:on</string>
+    <string name="diagnostics_remote_lyrics_off">lyrics:off</string>
+    <string name="phone_status_notification_access_required">Phone needs notification access enabled.</string>
+    <string name="phone_status_media_session_unavailable">Phone connected, but media session is unavailable.</string>
+    <string name="phone_status_waiting_playback">Phone connected, waiting for music playback.</string>
+    <string name="phone_status_waiting_lyrics">Phone connected, waiting for lyrics.</string>
+    <string name="phone_status_ready">Phone connected and ready.</string>
 </resources>

@@ -16,9 +16,25 @@ public final class BridgeCodec {
         try {
             JSONObject object = new JSONObject();
             object.put("type", BridgeContract.TYPE_HELLO);
+            object.put("protocolVersion", message.protocolVersion);
+            object.put("appDeviceId", message.appDeviceId);
             object.put("role", message.role);
             object.put("deviceName", message.deviceName);
             object.put("versionName", message.versionName);
+            return object.toString();
+        } catch (JSONException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    public static String encodeSessionStatus(RemoteSessionStatusPayload payload) {
+        try {
+            JSONObject object = new JSONObject();
+            object.put("type", BridgeContract.TYPE_SESSION_STATUS);
+            object.put("notificationAccessGranted", payload.notificationAccessGranted);
+            object.put("mediaSessionReadable", payload.mediaSessionReadable);
+            object.put("playbackAvailable", payload.playbackAvailable);
+            object.put("lyricsAvailable", payload.lyricsAvailable);
             return object.toString();
         } catch (JSONException exception) {
             throw new IllegalStateException(exception);
@@ -81,9 +97,19 @@ public final class BridgeCodec {
         String type = object.optString("type", "");
         if (BridgeContract.TYPE_HELLO.equals(type)) {
             return DecodedMessage.forHello(new HelloMessage(
+                    object.optInt("protocolVersion", 1),
+                    object.optString("appDeviceId", ""),
                     object.optString("role", ""),
                     object.optString("deviceName", ""),
                     object.optString("versionName", "")
+            ));
+        }
+        if (BridgeContract.TYPE_SESSION_STATUS.equals(type)) {
+            return DecodedMessage.forSessionStatus(new RemoteSessionStatusPayload(
+                    object.optBoolean("notificationAccessGranted", false),
+                    object.optBoolean("mediaSessionReadable", false),
+                    object.optBoolean("playbackAvailable", false),
+                    object.optBoolean("lyricsAvailable", false)
             ));
         }
         if (BridgeContract.TYPE_PLAYBACK.equals(type)) {

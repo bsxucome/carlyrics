@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -26,6 +28,12 @@
         </activity>
 
         <service
+            android:name=".companion.PhoneConnectionService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
             android:name=".companion.PhoneCompanionService"
             android:enabled="true"
             android:exported="false"
@@ -38,4 +46,3 @@
     </application>
 
 </manifest>
-

@@ -41,7 +41,10 @@
     <string name="select_phone_companion">选择已配对手机</string>
     <string name="paired_device_item">%1$s\n%2$s</string>
     <string name="paired_device_item_last_used">%1$s（上次使用）\n%2$s</string>
+    <string name="paired_device_item_primary">%1$s（主受信任设备）\n%2$s</string>
     <string name="unnamed_bluetooth_device">未命名设备</string>
+    <string name="forget_trusted_phone">忘记受信任手机</string>
+    <string name="trusted_phone_forgotten">已移除受信任手机</string>
     <string name="bluetooth_not_available">当前设备不支持蓝牙。</string>
     <string name="bluetooth_enable_required">请先打开蓝牙，再连接手机助手。</string>
     <string name="bluetooth_disabled_state">蓝牙当前已关闭。</string>
@@ -67,4 +70,18 @@
     <string name="diagnostics_plain_suffix"> | 纯文本</string>
     <string name="diagnostics_separator"> | </string>
     <string name="diagnostics_lines_suffix">行</string>
+    <string name="diagnostics_phone_state_label">手机：</string>
+    <string name="diagnostics_notif_on">通知:开</string>
+    <string name="diagnostics_notif_off">通知:关</string>
+    <string name="diagnostics_media_on">媒体:开</string>
+    <string name="diagnostics_media_off">媒体:关</string>
+    <string name="diagnostics_playback_on">播放:有</string>
+    <string name="diagnostics_playback_off">播放:无</string>
+    <string name="diagnostics_remote_lyrics_on">歌词:有</string>
+    <string name="diagnostics_remote_lyrics_off">歌词:无</string>
+    <string name="phone_status_notification_access_required">手机端需要开启通知访问权限。</string>
+    <string name="phone_status_media_session_unavailable">手机已连接，但媒体会话当前不可用。</string>
+    <string name="phone_status_waiting_playback">手机已连接，等待开始播放音乐。</string>
+    <string name="phone_status_waiting_lyrics">手机已连接，等待歌词同步。</string>
+    <string name="phone_status_ready">手机已连接并就绪。</string>
 </resources>

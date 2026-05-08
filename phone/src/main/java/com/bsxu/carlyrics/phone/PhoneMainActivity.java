@@ -10,20 +10,30 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 
+import com.bsxu.carlyrics.phone.companion.PhoneDebugScenarioStore;
+import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
 import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
 
 public class PhoneMainActivity extends Activity {
 
+    private static final String TAG = "PhoneMain";
     private static final String NOTIFICATION_LISTENER_SETTINGS_ACTION =
             "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
     private static final int REQUEST_BLUETOOTH_CONNECT = 501;
+    private static final String EXTRA_DEBUG_CLEAR_OVERRIDES = "debug_clear_overrides";
+    private static final String EXTRA_DEBUG_NOTIFICATION_ACCESS = "debug_notification_access";
+    private static final String EXTRA_DEBUG_MEDIA_SESSION = "debug_media_session";
+    private static final String EXTRA_DEBUG_PLAYBACK = "debug_playback";
+    private static final String EXTRA_DEBUG_LYRICS = "debug_lyrics";
 
     private TextView statusView;
     private Button notificationAccessButton;
     private Button bluetoothPermissionButton;
+    private PhoneDebugScenarioStore debugScenarioStore;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,11 +43,14 @@ public class PhoneMainActivity extends Activity {
         statusView = (TextView) findViewById(R.id.statusView);
         notificationAccessButton = (Button) findViewById(R.id.notificationAccessButton);
         bluetoothPermissionButton = (Button) findViewById(R.id.bluetoothPermissionButton);
+        debugScenarioStore = new PhoneDebugScenarioStore(this);
 
         notificationAccessButton.setOnClickListener(v ->
                 startActivity(new Intent(NOTIFICATION_LISTENER_SETTINGS_ACTION)));
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
 
+        handleDebugOverrides(getIntent());
+        ensureConnectionServiceRunning();
         renderStatus();
     }
 
@@ -49,6 +62,15 @@ public class PhoneMainActivity extends Activity {
                     new ComponentName(this, PhoneCompanionService.class)
             );
         }
+        ensureConnectionServiceRunning();
+        renderStatus();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDebugOverrides(intent);
         renderStatus();
     }
 
@@ -81,7 +103,7 @@ public class PhoneMainActivity extends Activity {
         } else if (!bluetoothGranted) {
             statusView.setText(R.string.status_bluetooth_missing);
         } else {
-            String serviceStatus = PhoneCompanionService.getUiStatus();
+            String serviceStatus = PhoneConnectionService.getUiStatus();
             statusView.setText(TextUtils.isEmpty(serviceStatus) ? getString(R.string.status_ready) : serviceStatus);
         }
 
@@ -109,5 +131,66 @@ public class PhoneMainActivity extends Activity {
         }
         return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
     }
-}
 
+    private void ensureConnectionServiceRunning() {
+        startService(new Intent(this, PhoneConnectionService.class));
+    }
+
+    private void handleDebugOverrides(Intent intent) {
+        if (intent == null || debugScenarioStore == null) {
+            return;
+        }
+        if (intent.getBooleanExtra(EXTRA_DEBUG_CLEAR_OVERRIDES, false)) {
+            debugScenarioStore.clearOverrides();
+            Log.i(TAG, "Cleared debug scenario overrides");
+            intent.removeExtra(EXTRA_DEBUG_CLEAR_OVERRIDES);
+            return;
+        }
+
+        boolean hasAnyOverride = intent.hasExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS)
+                || intent.hasExtra(EXTRA_DEBUG_MEDIA_SESSION)
+                || intent.hasExtra(EXTRA_DEBUG_PLAYBACK)
+                || intent.hasExtra(EXTRA_DEBUG_LYRICS);
+        if (!hasAnyOverride) {
+            return;
+        }
+
+        debugScenarioStore.setOverrides(
+                intent.hasExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS)
+                        ? Boolean.valueOf(intent.getBooleanExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS, false))
+                        : null,
+                intent.hasExtra(EXTRA_DEBUG_MEDIA_SESSION)
+                        ? Boolean.valueOf(intent.getBooleanExtra(EXTRA_DEBUG_MEDIA_SESSION, false))
+                        : null,
+                intent.hasExtra(EXTRA_DEBUG_PLAYBACK)
+                        ? Boolean.valueOf(intent.getBooleanExtra(EXTRA_DEBUG_PLAYBACK, false))
+                        : null,
+                intent.hasExtra(EXTRA_DEBUG_LYRICS)
+                        ? Boolean.valueOf(intent.getBooleanExtra(EXTRA_DEBUG_LYRICS, false))
+                        : null
+        );
+        Log.i(
+                TAG,
+                "Applied debug overrides notif="
+                        + (intent.hasExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS)
+                        ? intent.getBooleanExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS, false)
+                        : null)
+                        + " media="
+                        + (intent.hasExtra(EXTRA_DEBUG_MEDIA_SESSION)
+                        ? intent.getBooleanExtra(EXTRA_DEBUG_MEDIA_SESSION, false)
+                        : null)
+                        + " playback="
+                        + (intent.hasExtra(EXTRA_DEBUG_PLAYBACK)
+                        ? intent.getBooleanExtra(EXTRA_DEBUG_PLAYBACK, false)
+                        : null)
+                        + " lyrics="
+                        + (intent.hasExtra(EXTRA_DEBUG_LYRICS)
+                        ? intent.getBooleanExtra(EXTRA_DEBUG_LYRICS, false)
+                        : null)
+        );
+        intent.removeExtra(EXTRA_DEBUG_NOTIFICATION_ACCESS);
+        intent.removeExtra(EXTRA_DEBUG_MEDIA_SESSION);
+        intent.removeExtra(EXTRA_DEBUG_PLAYBACK);
+        intent.removeExtra(EXTRA_DEBUG_LYRICS);
+    }
+}

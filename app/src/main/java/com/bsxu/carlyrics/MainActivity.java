@@ -28,6 +28,7 @@ import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.RemoteLyricLine;
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
+import com.bsxu.carlyrics.bridge.RemoteSessionStatusPayload;
 import com.bsxu.carlyrics.companion.ConnectionState;
 import com.bsxu.carlyrics.companion.HeadUnitCompanionManager;
 import com.bsxu.carlyrics.companion.HeadUnitSessionSnapshot;
@@ -43,6 +44,7 @@ import java.util.Locale;
 public class MainActivity extends Activity implements HeadUnitCompanionManager.Listener {
 
     private static final String TAG = "HeadUnitMain";
+    private static final String EXTRA_DEBUG_CONNECT_ADDRESS = "connect_address";
     private static final int REQUEST_ENABLE_BLUETOOTH = 201;
     private static final int REQUEST_BLUETOOTH_CONNECT_PERMISSION = 202;
 
@@ -158,6 +160,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         installPressFeedback(nextButton, 0.94f);
         installPressFeedback(retryLyricsButton, 0.98f);
         renderSession(HeadUnitCompanionManager.getInstance(this).getSnapshot());
+        handleDebugConnectIntent(getIntent());
     }
 
     @Override
@@ -179,6 +182,13 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     @Override
     public void onSessionUpdated(HeadUnitSessionSnapshot snapshot) {
         renderSession(snapshot);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDebugConnectIntent(intent);
     }
 
     @Override
@@ -279,6 +289,19 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         }
     }
 
+    private void handleDebugConnectIntent(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String connectAddress = intent.getStringExtra(EXTRA_DEBUG_CONNECT_ADDRESS);
+        if (TextUtils.isEmpty(connectAddress)) {
+            return;
+        }
+        Log.d(TAG, "Debug connect request for address=" + connectAddress);
+        companionManager.connect(connectAddress);
+        intent.removeExtra(EXTRA_DEBUG_CONNECT_ADDRESS);
+    }
+
     private void maybeReconnectLastDevice() {
         Log.i(TAG, "maybeReconnectLastDevice()");
         if (currentSession != null && currentSession.connectionState != ConnectionState.DISCONNECTED) {
@@ -294,12 +317,12 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             Log.i(TAG, "Skip reconnect because Bluetooth is disabled");
             return;
         }
-        if (!TextUtils.isEmpty(companionManager.getLastDeviceAddress())) {
-            Log.i(TAG, "Reconnecting last known device=" + companionManager.getLastDeviceAddress());
+        if (companionManager.hasPrimaryTrustedDevice()) {
+            Log.i(TAG, "Reconnecting primary trusted device=" + companionManager.getPrimaryTrustedDeviceAddress());
             companionManager.reconnectLastDevice();
             return;
         }
-        Log.i(TAG, "Skip auto-connect because no remembered phone companion is available");
+        Log.i(TAG, "Skip auto-connect because no trusted phone companion is available");
     }
 
     private void openBondedDevicePicker() {
@@ -326,11 +349,17 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     private void showBondedDevicePickerDialog(List<BluetoothDevice> devices) {
         final List<BluetoothDevice> orderedDevices = new ArrayList<BluetoothDevice>(devices);
         final String lastDeviceAddress = companionManager.getLastDeviceAddress();
+        final String primaryTrustedAddress = companionManager.getPrimaryTrustedDeviceAddress();
         Collections.sort(orderedDevices, new Comparator<BluetoothDevice>() {
             @Override
             public int compare(BluetoothDevice first, BluetoothDevice second) {
                 String firstAddress = safeDeviceAddress(first);
                 String secondAddress = safeDeviceAddress(second);
+                boolean firstIsPrimary = TextUtils.equals(firstAddress, primaryTrustedAddress);
+                boolean secondIsPrimary = TextUtils.equals(secondAddress, primaryTrustedAddress);
+                if (firstIsPrimary != secondIsPrimary) {
+                    return firstIsPrimary ? -1 : 1;
+                }
                 boolean firstIsLast = TextUtils.equals(firstAddress, lastDeviceAddress);
                 boolean secondIsLast = TextUtils.equals(secondAddress, lastDeviceAddress);
                 if (firstIsLast != secondIsLast) {
@@ -347,14 +376,15 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             BluetoothDevice device = orderedDevices.get(i);
             String address = safeDeviceAddress(device);
             String name = emptyFallback(safeDeviceName(device), getString(R.string.unnamed_bluetooth_device));
-            if (TextUtils.equals(address, lastDeviceAddress)) {
+            if (TextUtils.equals(address, primaryTrustedAddress)) {
+                labels[i] = getString(R.string.paired_device_item_primary, name, address);
+            } else if (TextUtils.equals(address, lastDeviceAddress)) {
                 labels[i] = getString(R.string.paired_device_item_last_used, name, address);
             } else {
                 labels[i] = getString(R.string.paired_device_item, name, address);
             }
         }
-
-        new AlertDialog.Builder(this)
+        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this)
                 .setTitle(R.string.select_phone_companion)
                 .setItems(labels, new DialogInterface.OnClickListener() {
                     @Override
@@ -374,8 +404,17 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                         companionManager.connect(address);
                     }
                 })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+                .setNegativeButton(android.R.string.cancel, null);
+        if (companionManager.hasPrimaryTrustedDevice()) {
+            dialogBuilder.setNeutralButton(R.string.forget_trusted_phone, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    companionManager.forgetPrimaryTrustedDevice();
+                    Toast.makeText(MainActivity.this, R.string.trusted_phone_forgotten, Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        dialogBuilder.show();
     }
 
     private void renderSession(HeadUnitSessionSnapshot snapshot) {
@@ -425,8 +464,12 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     private void renderPlayback(HeadUnitSessionSnapshot snapshot) {
         if (snapshot == null || !snapshot.hasTrackData()) {
             titleView.setText(R.string.default_title_companion);
-            artistView.setText(R.string.default_artist_companion);
-            sourceView.setText(R.string.default_source_companion);
+            artistView.setText(snapshot != null && snapshot.isConnected()
+                    ? buildRemoteStateHint(snapshot)
+                    : getString(R.string.default_artist_companion));
+            sourceView.setText(snapshot != null && snapshot.isConnected()
+                    ? emptyFallback(snapshot.connectionLabel, getString(R.string.default_source_companion))
+                    : getString(R.string.default_source_companion));
             currentTimeView.setText("00:00");
             totalTimeView.setText("00:00");
             progressBar.setMax(1000);
@@ -460,14 +503,16 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             currentLyricsLines = new ArrayList<LyricLine>();
             currentLyricsSynced = false;
             currentLyricIndex = -1;
-            lyricsStatusView.setText(R.string.waiting_for_phone_companion);
+            lyricsStatusView.setText(snapshot != null && snapshot.isConnected()
+                    ? buildRemoteLyricsHint(snapshot)
+                    : getString(R.string.waiting_for_phone_companion));
             renderLyricStage();
             return;
         }
 
         RemoteLyricsPayload payload = snapshot.lyricsPayload;
         if (payload == null || !TextUtils.equals(payload.trackKey, currentTrackKey)) {
-            lyricsStatusView.setText(R.string.lyrics_sync_waiting);
+            lyricsStatusView.setText(buildRemoteLyricsHint(snapshot));
             renderLyricStage();
             return;
         }
@@ -607,6 +652,25 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                     .append(' ')
                     .append(getString(R.string.diagnostics_lines_suffix));
         }
+        if (currentSession.sessionStatusPayload != null) {
+            builder.append('\n')
+                    .append(getString(R.string.diagnostics_phone_state_label))
+                    .append(currentSession.sessionStatusPayload.notificationAccessGranted
+                            ? getString(R.string.diagnostics_notif_on)
+                            : getString(R.string.diagnostics_notif_off))
+                    .append(getString(R.string.diagnostics_separator))
+                    .append(currentSession.sessionStatusPayload.mediaSessionReadable
+                            ? getString(R.string.diagnostics_media_on)
+                            : getString(R.string.diagnostics_media_off))
+                    .append(getString(R.string.diagnostics_separator))
+                    .append(currentSession.sessionStatusPayload.playbackAvailable
+                            ? getString(R.string.diagnostics_playback_on)
+                            : getString(R.string.diagnostics_playback_off))
+                    .append(getString(R.string.diagnostics_separator))
+                    .append(currentSession.sessionStatusPayload.lyricsAvailable
+                            ? getString(R.string.diagnostics_remote_lyrics_on)
+                            : getString(R.string.diagnostics_remote_lyrics_off));
+        }
         diagnosticsView.setText(builder.toString());
     }
 
@@ -618,6 +682,49 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             return snapshot.playbackPayload.album;
         }
         return emptyFallback(snapshot.connectionLabel, getString(R.string.default_source_companion));
+    }
+
+    private String buildRemoteStateHint(HeadUnitSessionSnapshot snapshot) {
+        if (snapshot == null || snapshot.sessionStatusPayload == null) {
+            return getString(R.string.default_artist_companion);
+        }
+        RemoteSessionStatusPayload statusPayload = snapshot.sessionStatusPayload;
+        if (!statusPayload.notificationAccessGranted) {
+            return getString(R.string.phone_status_notification_access_required);
+        }
+        if (!statusPayload.mediaSessionReadable) {
+            return getString(R.string.phone_status_media_session_unavailable);
+        }
+        if (!statusPayload.playbackAvailable) {
+            return getString(R.string.phone_status_waiting_playback);
+        }
+        if (!statusPayload.lyricsAvailable) {
+            return getString(R.string.phone_status_waiting_lyrics);
+        }
+        return getString(R.string.phone_status_ready);
+    }
+
+    private String buildRemoteLyricsHint(HeadUnitSessionSnapshot snapshot) {
+        if (snapshot == null || !snapshot.isConnected()) {
+            return getString(R.string.waiting_for_phone_companion);
+        }
+        if (snapshot.sessionStatusPayload == null) {
+            return getString(R.string.lyrics_sync_waiting);
+        }
+        RemoteSessionStatusPayload statusPayload = snapshot.sessionStatusPayload;
+        if (!statusPayload.notificationAccessGranted) {
+            return getString(R.string.phone_status_notification_access_required);
+        }
+        if (!statusPayload.mediaSessionReadable) {
+            return getString(R.string.phone_status_media_session_unavailable);
+        }
+        if (!statusPayload.playbackAvailable) {
+            return getString(R.string.phone_status_waiting_playback);
+        }
+        if (!statusPayload.lyricsAvailable) {
+            return getString(R.string.phone_status_waiting_lyrics);
+        }
+        return getString(R.string.lyrics_sync_waiting);
     }
 
     private List<LyricLine> toLyricLines(List<RemoteLyricLine> remoteLines) {

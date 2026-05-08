@@ -16,6 +16,10 @@
     <string name="status_connected_to">状态：已连接到 %1$s</string>
     <string name="status_waiting_reconnect">状态：等待车机重新连接</string>
     <string name="generic_phone_device">手机</string>
+    <string name="connection_service_channel_name">手机助手连接服务</string>
+    <string name="connection_service_channel_desc">保持蓝牙助手链路处于可连接状态。</string>
+    <string name="connection_service_notification_title">手机歌词助手正在运行</string>
+    <string name="connection_service_notification_text">蓝牙连接服务正在保持车机连接待命。</string>
     <string name="open_notification_access">打开通知访问</string>
     <string name="grant_bluetooth_permission">授予蓝牙权限</string>
     <string name="how_it_works">使用说明</string>

@@ -16,6 +16,10 @@
     <string name="status_connected_to">Status: connected to %1$s</string>
     <string name="status_waiting_reconnect">Status: waiting for the head unit to reconnect</string>
     <string name="generic_phone_device">Phone</string>
+    <string name="connection_service_channel_name">Phone companion connection</string>
+    <string name="connection_service_channel_desc">Keeps the Bluetooth companion link ready for the head unit.</string>
+    <string name="connection_service_notification_title">Car lyrics phone companion is running</string>
+    <string name="connection_service_notification_text">Bluetooth connection service is keeping the head unit link ready.</string>
     <string name="open_notification_access">Open notification access</string>
     <string name="grant_bluetooth_permission">Grant Bluetooth permission</string>
     <string name="how_it_works">How this companion works</string>

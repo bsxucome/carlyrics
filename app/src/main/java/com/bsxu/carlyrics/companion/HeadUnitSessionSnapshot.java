@@ -6,11 +6,13 @@ import android.text.TextUtils;
 
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
+import com.bsxu.carlyrics.bridge.RemoteSessionStatusPayload;
 
 public final class HeadUnitSessionSnapshot {
 
     public final int connectionState;
     public final String connectionLabel;
+    public final RemoteSessionStatusPayload sessionStatusPayload;
     public final RemotePlaybackPayload playbackPayload;
     public final RemoteLyricsPayload lyricsPayload;
     public final Bitmap artworkBitmap;
@@ -19,6 +21,7 @@ public final class HeadUnitSessionSnapshot {
     public HeadUnitSessionSnapshot(
             int connectionState,
             String connectionLabel,
+            RemoteSessionStatusPayload sessionStatusPayload,
             RemotePlaybackPayload playbackPayload,
             RemoteLyricsPayload lyricsPayload,
             Bitmap artworkBitmap,
@@ -26,6 +29,7 @@ public final class HeadUnitSessionSnapshot {
     ) {
         this.connectionState = connectionState;
         this.connectionLabel = connectionLabel == null ? "" : connectionLabel;
+        this.sessionStatusPayload = sessionStatusPayload;
         this.playbackPayload = playbackPayload;
         this.lyricsPayload = lyricsPayload;
         this.artworkBitmap = artworkBitmap;
@@ -56,4 +60,3 @@ public final class HeadUnitSessionSnapshot {
         return Math.max(0L, estimated);
     }
 }
-
