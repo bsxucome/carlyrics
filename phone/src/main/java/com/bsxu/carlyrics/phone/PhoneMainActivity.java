@@ -2,9 +2,11 @@ package com.bsxu.carlyrics.phone;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -45,8 +47,7 @@ public class PhoneMainActivity extends Activity {
         bluetoothPermissionButton = (Button) findViewById(R.id.bluetoothPermissionButton);
         debugScenarioStore = new PhoneDebugScenarioStore(this);
 
-        notificationAccessButton.setOnClickListener(v ->
-                startActivity(new Intent(NOTIFICATION_LISTENER_SETTINGS_ACTION)));
+        notificationAccessButton.setOnClickListener(v -> openNotificationAccessSettings());
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
 
         handleDebugOverrides(getIntent());
@@ -134,6 +135,44 @@ public class PhoneMainActivity extends Activity {
 
     private void ensureConnectionServiceRunning() {
         startService(new Intent(this, PhoneConnectionService.class));
+    }
+
+    private void openNotificationAccessSettings() {
+        ComponentName componentName = new ComponentName(this, PhoneCompanionService.class);
+
+        Intent detailIntent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS);
+        detailIntent.putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, componentName.flattenToString());
+        detailIntent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        detailIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        if (tryStart(detailIntent)) {
+            return;
+        }
+
+        Intent listIntent = new Intent(NOTIFICATION_LISTENER_SETTINGS_ACTION);
+        listIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (tryStart(listIntent)) {
+            return;
+        }
+
+        Intent appDetailsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        appDetailsIntent.setData(Uri.fromParts("package", getPackageName(), null));
+        appDetailsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        tryStart(appDetailsIntent);
+    }
+
+    private boolean tryStart(Intent intent) {
+        if (intent == null) {
+            return false;
+        }
+        try {
+            startActivity(intent);
+            return true;
+        } catch (ActivityNotFoundException ignored) {
+            return false;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     private void handleDebugOverrides(Intent intent) {
