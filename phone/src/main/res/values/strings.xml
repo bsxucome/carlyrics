@@ -6,10 +6,11 @@
     <string name="status_idle">Status: waiting for notification access and Bluetooth permission</string>
     <string name="status_ready">Status: ready, waiting for the head unit to connect</string>
     <string name="status_permission_missing">Status: notification access is still disabled</string>
-    <string name="status_bluetooth_missing">Status: Bluetooth permission is still missing</string>
+    <string name="status_app_notifications_missing">Status: app notifications are still disabled</string>
+    <string name="status_bluetooth_missing">Status: nearby devices (Bluetooth) permission is still disabled</string>
     <string name="status_waiting_notification_access">Status: waiting for notification access</string>
     <string name="status_notification_disconnected">Status: notification access disconnected</string>
-    <string name="status_bluetooth_missing_runtime">Status: Bluetooth permission is missing</string>
+    <string name="status_bluetooth_missing_runtime">Status: nearby devices (Bluetooth) permission is missing</string>
     <string name="status_bluetooth_not_available">Status: Bluetooth is not available</string>
     <string name="status_turn_on_bluetooth">Status: turn Bluetooth on, then wait for the head unit</string>
     <string name="status_bluetooth_server_failed">Status: failed to open Bluetooth server</string>
@@ -21,7 +22,8 @@
     <string name="connection_service_notification_title">Car lyrics phone companion is running</string>
     <string name="connection_service_notification_text">Bluetooth connection service is keeping the head unit link ready.</string>
     <string name="open_notification_access">Open notification access</string>
-    <string name="grant_bluetooth_permission">Grant Bluetooth permission</string>
+    <string name="enable_app_notifications">Enable app notifications</string>
+    <string name="grant_bluetooth_permission">Allow nearby devices (Bluetooth)</string>
     <string name="how_it_works">How this companion works</string>
     <string name="how_it_works_desc">1. Enable notification access so the app can see the current music session.\n2. Keep Bluetooth on and pair the phone with the head unit.\n3. Open the head-unit app and connect to this phone.\n4. Start music playback on the phone. The companion will stream artwork, progress, and lyrics over Bluetooth.</string>
 </resources>
