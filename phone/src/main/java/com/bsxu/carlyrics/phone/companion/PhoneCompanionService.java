@@ -82,7 +82,6 @@ public class PhoneCompanionService extends NotificationListenerService {
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
     private PhoneConnectionManager connectionManager;
-    private PhoneDebugScenarioStore debugScenarioStore;
 
     private final PhoneConnectionManager.ControlDelegate controlDelegate = new PhoneConnectionManager.ControlDelegate() {
         @Override
@@ -147,13 +146,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         super.onCreate();
         lyricsRepository = new PhoneLyricsRepository();
         connectionManager = PhoneConnectionManager.getInstance(this);
-        debugScenarioStore = new PhoneDebugScenarioStore(this);
-        connectionManager.updateSessionStatus(
-                resolveNotificationAccess(false),
-                resolveMediaSession(false),
-                resolvePlayback(false),
-                resolveLyrics(false)
-        );
+        connectionManager.updateSessionStatus(false, false, false, false);
         Log.i(TAG, "PhoneCompanionService created");
     }
 
@@ -173,10 +166,10 @@ public class PhoneCompanionService extends NotificationListenerService {
         publishFromNotifications();
         publishBestControllerSnapshot();
         connectionManager.updateSessionStatus(
-                resolveNotificationAccess(true),
-                resolveMediaSession(true),
-                resolvePlayback(currentSnapshot != null && currentSnapshot.hasTrackData()),
-                resolveLyrics(currentLyricsResult != null)
+                true,
+                true,
+                currentSnapshot != null && currentSnapshot.hasTrackData(),
+                currentLyricsResult != null
         );
         Log.i(TAG, "Notification listener connected");
     }
@@ -190,12 +183,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         currentLyricsResult = null;
         currentTrackKey = "";
         connectionManager.clearPublishedState();
-        connectionManager.updateSessionStatus(
-                resolveNotificationAccess(false),
-                resolveMediaSession(false),
-                resolvePlayback(false),
-                resolveLyrics(false)
-        );
+        connectionManager.updateSessionStatus(false, false, false, false);
         Log.i(TAG, "Notification listener disconnected");
         super.onListenerDisconnected();
     }
@@ -271,61 +259,21 @@ public class PhoneCompanionService extends NotificationListenerService {
 
     private void publishBestControllerSnapshot() {
         MediaController bestController = chooseBestController();
-        if (!resolveNotificationAccess(true) || !resolveMediaSession(bestController != null)) {
-            Log.i(
-                    TAG,
-                    "Suppressing media publish due to overrides notif="
-                            + resolveNotificationAccess(true)
-                            + " media="
-                            + resolveMediaSession(bestController != null)
-            );
-            currentController = null;
-            currentSnapshot = null;
-            currentLyricsResult = null;
-            currentTrackKey = "";
-            connectionManager.clearPublishedState();
-            connectionManager.updateSessionStatus(
-                    resolveNotificationAccess(true),
-                    resolveMediaSession(bestController != null),
-                    resolvePlayback(false),
-                    resolveLyrics(false)
-            );
-            return;
-        }
         if (bestController == null) {
             currentController = null;
             currentSnapshot = null;
             currentLyricsResult = null;
             currentTrackKey = "";
-            connectionManager.updateSessionStatus(
-                    resolveNotificationAccess(true),
-                    resolveMediaSession(true),
-                    resolvePlayback(false),
-                    resolveLyrics(false)
-            );
+            connectionManager.updateSessionStatus(true, true, false, false);
             return;
         }
         currentController = bestController;
         ObservedPlaybackSnapshot snapshot = buildSnapshotFromController(bestController);
-        if (snapshot == null || !snapshot.hasTrackData() || !resolvePlayback(true)) {
-            Log.i(
-                    TAG,
-                    "Suppressing playback publish snapshotPresent="
-                            + (snapshot != null)
-                            + " hasTrack="
-                            + (snapshot != null && snapshot.hasTrackData())
-                            + " playbackOverride="
-                            + resolvePlayback(true)
-            );
+        if (snapshot == null || !snapshot.hasTrackData()) {
             currentSnapshot = null;
             currentLyricsResult = null;
             connectionManager.clearPublishedState();
-            connectionManager.updateSessionStatus(
-                    resolveNotificationAccess(true),
-                    resolveMediaSession(true),
-                    resolvePlayback(false),
-                    resolveLyrics(false)
-            );
+            connectionManager.updateSessionStatus(true, true, false, false);
             return;
         }
         publishSnapshot(snapshot);
@@ -487,10 +435,10 @@ public class PhoneCompanionService extends NotificationListenerService {
         );
         connectionManager.publishSnapshot(snapshot);
         connectionManager.updateSessionStatus(
-                resolveNotificationAccess(true),
-                resolveMediaSession(true),
-                resolvePlayback(true),
-                resolveLyrics(currentLyricsResult != null)
+                true,
+                true,
+                true,
+                currentLyricsResult != null
         );
         if (trackChanged || shouldRetryLyricsLookup()) {
             requestLyricsForCurrentTrack(true);
@@ -515,10 +463,10 @@ public class PhoneCompanionService extends NotificationListenerService {
                     Log.i(TAG, "Lyrics lookup returned null for trackKey=" + expectedTrackKey);
                     connectionManager.clearLyricsForTrack(expectedTrackKey);
                     connectionManager.updateSessionStatus(
-                            resolveNotificationAccess(true),
-                            resolveMediaSession(true),
-                            resolvePlayback(currentSnapshot != null && currentSnapshot.hasTrackData()),
-                            resolveLyrics(false)
+                            true,
+                            true,
+                            currentSnapshot != null && currentSnapshot.hasTrackData(),
+                            false
                     );
                 } else {
                     Log.i(
@@ -527,37 +475,16 @@ public class PhoneCompanionService extends NotificationListenerService {
                                     + " synced=" + result.synced
                                     + " lines=" + result.lines.size()
                     );
-                    if (resolveLyrics(true)) {
-                        connectionManager.publishLyrics(result);
-                    } else {
-                        Log.i(TAG, "Suppressing lyrics publish due to debug override");
-                        connectionManager.clearLyricsForTrack(expectedTrackKey);
-                    }
+                    connectionManager.publishLyrics(result);
                     connectionManager.updateSessionStatus(
-                            resolveNotificationAccess(true),
-                            resolveMediaSession(true),
-                            resolvePlayback(true),
-                            resolveLyrics(true)
+                            true,
+                            true,
+                            true,
+                            true
                     );
                 }
             }
         });
-    }
-
-    private boolean resolveNotificationAccess(boolean actualValue) {
-        return debugScenarioStore == null ? actualValue : debugScenarioStore.resolveNotificationAccess(actualValue);
-    }
-
-    private boolean resolveMediaSession(boolean actualValue) {
-        return debugScenarioStore == null ? actualValue : debugScenarioStore.resolveMediaSession(actualValue);
-    }
-
-    private boolean resolvePlayback(boolean actualValue) {
-        return debugScenarioStore == null ? actualValue : debugScenarioStore.resolvePlayback(actualValue);
-    }
-
-    private boolean resolveLyrics(boolean actualValue) {
-        return debugScenarioStore == null ? actualValue : debugScenarioStore.resolveLyrics(actualValue);
     }
 
     private void startBluetoothServer() {
