@@ -17,6 +17,7 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.app.NotificationManager;
 
+import com.bsxu.carlyrics.phone.companion.PhoneConnectionManager;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
 import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
 
@@ -50,6 +51,7 @@ public class PhoneMainActivity extends Activity {
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
 
         ensureConnectionServiceRunning();
+        refreshConnectionPermissionState();
         renderStatus();
     }
 
@@ -63,6 +65,7 @@ public class PhoneMainActivity extends Activity {
         }
         maybeContinueNotificationSetupFlow();
         ensureConnectionServiceRunning();
+        refreshConnectionPermissionState();
         renderStatus();
     }
 
@@ -77,6 +80,7 @@ public class PhoneMainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_BLUETOOTH_CONNECT) {
+            refreshConnectionPermissionState();
             renderStatus();
             return;
         }
@@ -90,6 +94,7 @@ public class PhoneMainActivity extends Activity {
                 continueNotificationSetupOnResume = false;
                 lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
             }
+            refreshConnectionPermissionState();
             renderStatus();
         }
     }
@@ -165,6 +170,10 @@ public class PhoneMainActivity extends Activity {
 
     private void ensureConnectionServiceRunning() {
         startService(new Intent(this, PhoneConnectionService.class));
+    }
+
+    private void refreshConnectionPermissionState() {
+        PhoneConnectionManager.getInstance(this).setNotificationAccessGranted(hasNotificationAccess());
     }
 
     private void beginNotificationSetupFlow() {

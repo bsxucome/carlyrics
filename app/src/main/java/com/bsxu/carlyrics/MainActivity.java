@@ -77,6 +77,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     private ImageButton playPauseButton;
     private ImageButton nextButton;
     private Button retryLyricsButton;
+    private Button disconnectButton;
     private TextView lyricsStatusView;
     private TextView diagnosticsView;
     private TextView lyricLineTopView;
@@ -140,6 +141,17 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                 }
             }
         });
+        disconnectButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                companionManager.disconnect();
+                Toast.makeText(
+                        MainActivity.this,
+                        R.string.phone_companion_disconnected,
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+        });
         sourceView.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
@@ -159,6 +171,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         installPressFeedback(playPauseButton, 0.96f);
         installPressFeedback(nextButton, 0.94f);
         installPressFeedback(retryLyricsButton, 0.98f);
+        installPressFeedback(disconnectButton, 0.98f);
         renderSession(HeadUnitCompanionManager.getInstance(this).getSnapshot());
         handleDebugConnectIntent(getIntent());
     }
@@ -242,6 +255,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         playPauseButton = (ImageButton) findViewById(R.id.playPauseButton);
         nextButton = (ImageButton) findViewById(R.id.nextButton);
         retryLyricsButton = (Button) findViewById(R.id.retryLyricsButton);
+        disconnectButton = (Button) findViewById(R.id.disconnectButton);
         lyricsStatusView = (TextView) findViewById(R.id.lyricsStatusView);
         diagnosticsView = (TextView) findViewById(R.id.diagnosticsView);
         lyricLineTopView = (TextView) findViewById(R.id.lyricLineTop);
@@ -613,11 +627,14 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         playPauseButton.setEnabled(connected);
         nextButton.setEnabled(connected);
         retryLyricsButton.setEnabled(connected && hasTrack);
+        disconnectButton.setEnabled(connected);
+        disconnectButton.setVisibility(connected ? View.VISIBLE : View.GONE);
 
         previousButton.setAlpha(connected ? 1f : 0.45f);
         playPauseButton.setAlpha(connected ? 1f : 0.45f);
         nextButton.setAlpha(connected ? 1f : 0.45f);
         retryLyricsButton.setAlpha((connected && hasTrack) ? 1f : 0.55f);
+        disconnectButton.setAlpha(connected ? 1f : 0.55f);
     }
 
     private void renderDiagnostics() {
@@ -659,6 +676,10 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                             ? getString(R.string.diagnostics_notif_on)
                             : getString(R.string.diagnostics_notif_off))
                     .append(getString(R.string.diagnostics_separator))
+                    .append(currentSession.sessionStatusPayload.notificationListenerActive
+                            ? getString(R.string.diagnostics_listener_on)
+                            : getString(R.string.diagnostics_listener_off))
+                    .append(getString(R.string.diagnostics_separator))
                     .append(currentSession.sessionStatusPayload.mediaSessionReadable
                             ? getString(R.string.diagnostics_media_on)
                             : getString(R.string.diagnostics_media_off))
@@ -692,6 +713,9 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         if (!statusPayload.notificationAccessGranted) {
             return getString(R.string.phone_status_notification_access_required);
         }
+        if (!statusPayload.notificationListenerActive) {
+            return getString(R.string.phone_status_notification_service_starting);
+        }
         if (!statusPayload.mediaSessionReadable) {
             return getString(R.string.phone_status_media_session_unavailable);
         }
@@ -714,6 +738,9 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         RemoteSessionStatusPayload statusPayload = snapshot.sessionStatusPayload;
         if (!statusPayload.notificationAccessGranted) {
             return getString(R.string.phone_status_notification_access_required);
+        }
+        if (!statusPayload.notificationListenerActive) {
+            return getString(R.string.phone_status_notification_service_starting);
         }
         if (!statusPayload.mediaSessionReadable) {
             return getString(R.string.phone_status_media_session_unavailable);

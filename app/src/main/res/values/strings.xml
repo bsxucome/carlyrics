@@ -36,6 +36,8 @@
     <string name="connection_desc_idle">Use the paired phone companion app to stream metadata, artwork, and lyrics to the head unit.</string>
     <string name="connect_phone_companion">Connect phone</string>
     <string name="connecting_phone_companion">Connecting...</string>
+    <string name="disconnect_phone_companion">Disconnect</string>
+    <string name="phone_companion_disconnected">Phone companion disconnected</string>
     <string name="connecting_to_phone">Connecting to %1$s...</string>
     <string name="connecting_to_phone_candidates">Trying %1$d paired phones...</string>
     <string name="select_phone_companion">Select paired phone</string>
@@ -73,6 +75,8 @@
     <string name="diagnostics_phone_state_label">Phone: </string>
     <string name="diagnostics_notif_on">notif:on</string>
     <string name="diagnostics_notif_off">notif:off</string>
+    <string name="diagnostics_listener_on">listener:on</string>
+    <string name="diagnostics_listener_off">listener:off</string>
     <string name="diagnostics_media_on">media:on</string>
     <string name="diagnostics_media_off">media:off</string>
     <string name="diagnostics_playback_on">playback:on</string>
@@ -80,6 +84,7 @@
     <string name="diagnostics_remote_lyrics_on">lyrics:on</string>
     <string name="diagnostics_remote_lyrics_off">lyrics:off</string>
     <string name="phone_status_notification_access_required">Phone needs notification access enabled.</string>
+    <string name="phone_status_notification_service_starting">Phone connected, notification service is starting.</string>
     <string name="phone_status_media_session_unavailable">Phone connected, but media session is unavailable.</string>
     <string name="phone_status_waiting_playback">Phone connected, waiting for music playback.</string>
     <string name="phone_status_waiting_lyrics">Phone connected, waiting for lyrics.</string>

@@ -147,6 +147,20 @@
                         android:textColor="#D9F5FF"
                         android:textSize="10sp" />
 
+                    <Button
+                        android:id="@+id/disconnectButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="30dp"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/bg_action_secondary"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:text="@string/disconnect_phone_companion"
+                        android:textAllCaps="false"
+                        android:textColor="#D9F5FF"
+                        android:textSize="10sp"
+                        android:visibility="gone" />
+
                     <TextView
                         android:id="@+id/lyricsStatusView"
                         android:layout_width="wrap_content"

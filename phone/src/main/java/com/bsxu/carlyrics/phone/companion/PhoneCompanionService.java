@@ -19,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
@@ -53,6 +54,7 @@ public class PhoneCompanionService extends NotificationListenerService {
 
     private static final String TAG = "PhoneCompanion";
     private static volatile String uiStatus = "";
+    private static volatile boolean listenerActive = false;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<MediaController> activeControllers = new ArrayList<MediaController>();
@@ -141,12 +143,19 @@ public class PhoneCompanionService extends NotificationListenerService {
         return uiStatus;
     }
 
+    public static boolean isListenerActive() {
+        return listenerActive;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
         lyricsRepository = new PhoneLyricsRepository();
         connectionManager = PhoneConnectionManager.getInstance(this);
-        connectionManager.updateSessionStatus(false, false, false, false);
+        listenerActive = false;
+        connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
+        connectionManager.setNotificationListenerActive(false);
+        connectionManager.setMediaState(false, false, false);
         Log.i(TAG, "PhoneCompanionService created");
     }
 
@@ -160,30 +169,34 @@ public class PhoneCompanionService extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
+        listenerActive = true;
         attachMediaSessionListener();
         connectionManager.setControlDelegate(controlDelegate);
         connectionManager.start();
+        connectionManager.setNotificationAccessGranted(true);
+        connectionManager.setNotificationListenerActive(true);
         publishFromNotifications();
         publishBestControllerSnapshot();
-        connectionManager.updateSessionStatus(
-                true,
-                true,
-                currentSnapshot != null && currentSnapshot.hasTrackData(),
-                currentLyricsResult != null
-        );
         Log.i(TAG, "Notification listener connected");
     }
 
     @Override
     public void onListenerDisconnected() {
+        listenerActive = false;
         connectionManager.clearControlDelegate(controlDelegate);
         detachMediaSessionListener();
         currentController = null;
         currentSnapshot = null;
         currentLyricsResult = null;
         currentTrackKey = "";
-        connectionManager.clearPublishedState();
-        connectionManager.updateSessionStatus(false, false, false, false);
+        connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
+        connectionManager.setNotificationListenerActive(false);
+        connectionManager.setMediaState(false, false, false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && hasNotificationAccessConfigured()) {
+            NotificationListenerService.requestRebind(
+                    new ComponentName(this, PhoneCompanionService.class)
+            );
+        }
         Log.i(TAG, "Notification listener disconnected");
         super.onListenerDisconnected();
     }
@@ -264,7 +277,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             currentSnapshot = null;
             currentLyricsResult = null;
             currentTrackKey = "";
-            connectionManager.updateSessionStatus(true, true, false, false);
+            connectionManager.setMediaState(false, false, false);
             return;
         }
         currentController = bestController;
@@ -272,8 +285,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         if (snapshot == null || !snapshot.hasTrackData()) {
             currentSnapshot = null;
             currentLyricsResult = null;
-            connectionManager.clearPublishedState();
-            connectionManager.updateSessionStatus(true, true, false, false);
+            connectionManager.setMediaState(true, false, false);
             return;
         }
         publishSnapshot(snapshot);
@@ -434,12 +446,7 @@ public class PhoneCompanionService extends NotificationListenerService {
                         + " package=" + snapshot.packageName
         );
         connectionManager.publishSnapshot(snapshot);
-        connectionManager.updateSessionStatus(
-                true,
-                true,
-                true,
-                currentLyricsResult != null
-        );
+        connectionManager.setMediaState(true, true, currentLyricsResult != null);
         if (trackChanged || shouldRetryLyricsLookup()) {
             requestLyricsForCurrentTrack(true);
         }
@@ -462,12 +469,7 @@ public class PhoneCompanionService extends NotificationListenerService {
                 if (result == null) {
                     Log.i(TAG, "Lyrics lookup returned null for trackKey=" + expectedTrackKey);
                     connectionManager.clearLyricsForTrack(expectedTrackKey);
-                    connectionManager.updateSessionStatus(
-                            true,
-                            true,
-                            currentSnapshot != null && currentSnapshot.hasTrackData(),
-                            false
-                    );
+                    connectionManager.setMediaState(true, currentSnapshot != null && currentSnapshot.hasTrackData(), false);
                 } else {
                     Log.i(
                             TAG,
@@ -476,15 +478,24 @@ public class PhoneCompanionService extends NotificationListenerService {
                                     + " lines=" + result.lines.size()
                     );
                     connectionManager.publishLyrics(result);
-                    connectionManager.updateSessionStatus(
-                            true,
-                            true,
-                            true,
-                            true
-                    );
+                    connectionManager.setMediaState(true, true, true);
                 }
             }
         });
+    }
+
+    private boolean hasNotificationAccessConfigured() {
+        String enabledListeners = Settings.Secure.getString(
+                getContentResolver(),
+                "enabled_notification_listeners"
+        );
+        if (TextUtils.isEmpty(enabledListeners)) {
+            return false;
+        }
+        ComponentName componentName = new ComponentName(this, PhoneCompanionService.class);
+        return enabledListeners.contains(componentName.flattenToString())
+                || enabledListeners.contains(componentName.flattenToShortString())
+                || enabledListeners.contains(getPackageName());
     }
 
     private void startBluetoothServer() {

@@ -85,7 +85,7 @@ public final class PhoneConnectionManager {
     private volatile String lastLyricsSentTrackKey = "";
     private volatile long lastLyricsSentElapsedMs;
     private volatile RemoteSessionStatusPayload currentSessionStatus =
-            new RemoteSessionStatusPayload(false, false, false, false);
+            new RemoteSessionStatusPayload(false, false, false, false, false);
     private volatile boolean shouldRun = false;
 
     private PhoneConnectionManager(Context context) {
@@ -147,12 +147,7 @@ public final class PhoneConnectionManager {
             lastArtworkSentTrackKey = "";
         }
         sendPlaybackSnapshot(trackChanged);
-        updateSessionStatus(
-                currentSessionStatus.notificationAccessGranted,
-                currentSessionStatus.mediaSessionReadable,
-                true,
-                currentLyricsResult != null
-        );
+        setMediaState(true, true, currentLyricsResult != null);
     }
 
     public void publishLyrics(PhoneLyricsResult result) {
@@ -164,24 +159,14 @@ public final class PhoneConnectionManager {
         }
         currentLyricsResult = result;
         sendLyricsPayload();
-        updateSessionStatus(
-                currentSessionStatus.notificationAccessGranted,
-                currentSessionStatus.mediaSessionReadable,
-                currentSnapshot != null && currentSnapshot.hasTrackData(),
-                true
-        );
+        setMediaState(currentSessionStatus.mediaSessionReadable, currentSnapshot != null && currentSnapshot.hasTrackData(), true);
     }
 
     public void clearLyricsForTrack(String trackKey) {
         if (TextUtils.isEmpty(trackKey) || TextUtils.equals(trackKey, currentTrackKey)) {
             currentLyricsResult = null;
             lastLyricsSentTrackKey = "";
-            updateSessionStatus(
-                    currentSessionStatus.notificationAccessGranted,
-                    currentSessionStatus.mediaSessionReadable,
-                    currentSnapshot != null && currentSnapshot.hasTrackData(),
-                    false
-            );
+            setMediaState(currentSessionStatus.mediaSessionReadable, currentSnapshot != null && currentSnapshot.hasTrackData(), false);
         }
     }
 
@@ -191,17 +176,49 @@ public final class PhoneConnectionManager {
         currentTrackKey = "";
         lastArtworkSentTrackKey = "";
         lastLyricsSentTrackKey = "";
-        updateSessionStatus(false, false, false, false);
+        setMediaState(false, false, false);
+    }
+
+    public void setNotificationAccessGranted(boolean granted) {
+        updateSessionStatus(
+                granted,
+                currentSessionStatus.notificationListenerActive,
+                currentSessionStatus.mediaSessionReadable,
+                currentSessionStatus.playbackAvailable,
+                currentSessionStatus.lyricsAvailable
+        );
+    }
+
+    public void setNotificationListenerActive(boolean active) {
+        updateSessionStatus(
+                currentSessionStatus.notificationAccessGranted,
+                active,
+                currentSessionStatus.mediaSessionReadable,
+                currentSessionStatus.playbackAvailable,
+                currentSessionStatus.lyricsAvailable
+        );
+    }
+
+    public void setMediaState(boolean mediaSessionReadable, boolean playbackAvailable, boolean lyricsAvailable) {
+        updateSessionStatus(
+                currentSessionStatus.notificationAccessGranted,
+                currentSessionStatus.notificationListenerActive,
+                mediaSessionReadable,
+                playbackAvailable,
+                lyricsAvailable
+        );
     }
 
     public void updateSessionStatus(
             boolean notificationAccessGranted,
+            boolean notificationListenerActive,
             boolean mediaSessionReadable,
             boolean playbackAvailable,
             boolean lyricsAvailable
     ) {
         currentSessionStatus = new RemoteSessionStatusPayload(
                 notificationAccessGranted,
+                notificationListenerActive,
                 mediaSessionReadable,
                 playbackAvailable,
                 lyricsAvailable
@@ -441,6 +458,7 @@ public final class PhoneConnectionManager {
         Log.d(
                 TAG,
                 "sendSessionStatus notif=" + currentSessionStatus.notificationAccessGranted
+                        + " listener=" + currentSessionStatus.notificationListenerActive
                         + " media=" + currentSessionStatus.mediaSessionReadable
                         + " playback=" + currentSessionStatus.playbackAvailable
                         + " lyrics=" + currentSessionStatus.lyricsAvailable

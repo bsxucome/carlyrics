@@ -32,6 +32,7 @@ public final class BridgeCodec {
             JSONObject object = new JSONObject();
             object.put("type", BridgeContract.TYPE_SESSION_STATUS);
             object.put("notificationAccessGranted", payload.notificationAccessGranted);
+            object.put("notificationListenerActive", payload.notificationListenerActive);
             object.put("mediaSessionReadable", payload.mediaSessionReadable);
             object.put("playbackAvailable", payload.playbackAvailable);
             object.put("lyricsAvailable", payload.lyricsAvailable);
@@ -107,6 +108,7 @@ public final class BridgeCodec {
         if (BridgeContract.TYPE_SESSION_STATUS.equals(type)) {
             return DecodedMessage.forSessionStatus(new RemoteSessionStatusPayload(
                     object.optBoolean("notificationAccessGranted", false),
+                    object.optBoolean("notificationListenerActive", false),
                     object.optBoolean("mediaSessionReadable", false),
                     object.optBoolean("playbackAvailable", false),
                     object.optBoolean("lyricsAvailable", false)
