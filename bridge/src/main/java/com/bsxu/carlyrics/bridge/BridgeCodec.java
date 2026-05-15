@@ -93,6 +93,14 @@ public final class BridgeCodec {
         }
     }
 
+    public static String encodePing(PingMessage message) {
+        return encodePingLikeMessage(BridgeContract.TYPE_PING, message);
+    }
+
+    public static String encodePong(PingMessage message) {
+        return encodePingLikeMessage(BridgeContract.TYPE_PONG, message);
+    }
+
     public static DecodedMessage decode(String line) throws JSONException {
         JSONObject object = new JSONObject(line);
         String type = object.optString("type", "");
@@ -152,6 +160,23 @@ public final class BridgeCodec {
         if (BridgeContract.TYPE_CONTROL.equals(type)) {
             return DecodedMessage.forControl(new ControlMessage(object.optString("action", "")));
         }
+        if (BridgeContract.TYPE_PING.equals(type)) {
+            return DecodedMessage.forPing(new PingMessage(object.optLong("nonce", 0L)));
+        }
+        if (BridgeContract.TYPE_PONG.equals(type)) {
+            return DecodedMessage.forPong(new PingMessage(object.optLong("nonce", 0L)));
+        }
         throw new JSONException("Unknown message type: " + type);
+    }
+
+    private static String encodePingLikeMessage(String type, PingMessage message) {
+        try {
+            JSONObject object = new JSONObject();
+            object.put("type", type);
+            object.put("nonce", message == null ? 0L : message.nonce);
+            return object.toString();
+        } catch (JSONException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }
