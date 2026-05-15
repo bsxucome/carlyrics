@@ -11,6 +11,7 @@ public final class BridgeContract {
     public static final String TYPE_LYRICS = "lyrics";
     public static final String TYPE_CONTROL = "control";
     public static final String TYPE_PING = "ping";
+    public static final String TYPE_PONG = "pong";
 
     public static final String ROLE_HEADUNIT = "headunit";
     public static final String ROLE_PHONE = "phone";

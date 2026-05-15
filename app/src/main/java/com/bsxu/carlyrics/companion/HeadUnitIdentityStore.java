@@ -53,6 +53,10 @@ final class HeadUnitIdentityStore {
         return sharedPreferences.getString(KEY_PRIMARY_REMOTE_APP_DEVICE_ID, "");
     }
 
+    boolean hasPrimaryTrustedRemoteAppDeviceId() {
+        return !TextUtils.isEmpty(getPrimaryTrustedRemoteAppDeviceId());
+    }
+
     String getPrimaryTrustedBluetoothAddress() {
         return sharedPreferences.getString(KEY_PRIMARY_REMOTE_BLUETOOTH_ADDRESS, "");
     }

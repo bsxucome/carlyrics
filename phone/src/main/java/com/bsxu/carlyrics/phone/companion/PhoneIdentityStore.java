@@ -45,4 +45,8 @@ final class PhoneIdentityStore {
     String getTrustedRemoteAppDeviceId() {
         return sharedPreferences.getString(KEY_TRUSTED_REMOTE_APP_DEVICE_ID, "");
     }
+
+    boolean hasTrustedRemoteAppDeviceId() {
+        return !TextUtils.isEmpty(getTrustedRemoteAppDeviceId());
+    }
 }
