@@ -53,6 +53,8 @@ import java.util.UUID;
 public class PhoneCompanionService extends NotificationListenerService {
 
     private static final String TAG = "PhoneCompanion";
+    private static final long ARTWORK_RETRY_DELAY_MS = 400L;
+    private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 5;
     private static volatile String uiStatus = "";
     private static volatile boolean listenerActive = false;
 
@@ -80,6 +82,13 @@ public class PhoneCompanionService extends NotificationListenerService {
                     publishBestControllerSnapshot();
                 }
             };
+
+    private final Runnable artworkRetryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            performArtworkRetry();
+        }
+    };
 
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
@@ -138,6 +147,8 @@ public class PhoneCompanionService extends NotificationListenerService {
     private volatile String lastArtworkSentTrackKey = "";
     private volatile String lastLyricsSentTrackKey = "";
     private volatile long lastLyricsSentElapsedMs;
+    private volatile String pendingArtworkTrackKey = "";
+    private volatile int pendingArtworkRetryAttempt;
 
     public static String getUiStatus() {
         return uiStatus;
@@ -161,6 +172,7 @@ public class PhoneCompanionService extends NotificationListenerService {
 
     @Override
     public void onDestroy() {
+        cancelArtworkRetry();
         connectionManager.clearControlDelegate(controlDelegate);
         detachMediaSessionListener();
         super.onDestroy();
@@ -189,6 +201,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         currentSnapshot = null;
         currentLyricsResult = null;
         currentTrackKey = "";
+        cancelArtworkRetry();
         connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
         connectionManager.setNotificationListenerActive(false);
         connectionManager.setMediaState(false, false, false);
@@ -277,6 +290,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             currentSnapshot = null;
             currentLyricsResult = null;
             currentTrackKey = "";
+            cancelArtworkRetry();
             connectionManager.setMediaState(false, false, false);
             return;
         }
@@ -285,20 +299,21 @@ public class PhoneCompanionService extends NotificationListenerService {
         if (snapshot == null || !snapshot.hasTrackData()) {
             currentSnapshot = null;
             currentLyricsResult = null;
+            cancelArtworkRetry();
             connectionManager.setMediaState(true, false, false);
             return;
         }
         publishSnapshot(snapshot);
     }
 
-    private void publishFromNotifications() {
+    private boolean publishFromNotifications() {
         if (currentSnapshot == null || currentSnapshot.artwork != null) {
-            return;
+            return false;
         }
         try {
             StatusBarNotification[] notifications = getActiveNotifications();
             if (notifications == null) {
-                return;
+                return false;
             }
             for (StatusBarNotification notification : notifications) {
                 if (notification == null || notification.getNotification() == null) {
@@ -320,11 +335,12 @@ public class PhoneCompanionService extends NotificationListenerService {
                             currentSnapshot.playing,
                             artwork
                     ));
-                    return;
+                    return true;
                 }
             }
         } catch (RuntimeException ignored) {
         }
+        return false;
     }
 
     private MediaController chooseBestController() {
@@ -436,6 +452,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             lastLyricsAttemptElapsedMs = 0L;
             lastLyricsSentTrackKey = "";
             lastArtworkSentTrackKey = "";
+            cancelArtworkRetry();
         }
         Log.i(
                 TAG,
@@ -445,6 +462,11 @@ public class PhoneCompanionService extends NotificationListenerService {
                         + " playing=" + snapshot.playing
                         + " package=" + snapshot.packageName
         );
+        if (snapshot.artwork == null) {
+            scheduleArtworkRetry(snapshot.getTrackKey());
+        } else {
+            cancelArtworkRetry();
+        }
         connectionManager.publishSnapshot(snapshot);
         connectionManager.setMediaState(true, true, currentLyricsResult != null);
         if (trackChanged || shouldRetryLyricsLookup()) {
@@ -496,6 +518,79 @@ public class PhoneCompanionService extends NotificationListenerService {
         return enabledListeners.contains(componentName.flattenToString())
                 || enabledListeners.contains(componentName.flattenToShortString())
                 || enabledListeners.contains(getPackageName());
+    }
+
+    private void scheduleArtworkRetry(String trackKey) {
+        if (TextUtils.isEmpty(trackKey)) {
+            return;
+        }
+        if (TextUtils.equals(pendingArtworkTrackKey, trackKey)) {
+            return;
+        }
+        pendingArtworkTrackKey = trackKey;
+        pendingArtworkRetryAttempt = 0;
+        mainHandler.removeCallbacks(artworkRetryRunnable);
+        mainHandler.postDelayed(artworkRetryRunnable, ARTWORK_RETRY_DELAY_MS);
+    }
+
+    private void cancelArtworkRetry() {
+        pendingArtworkTrackKey = "";
+        pendingArtworkRetryAttempt = 0;
+        mainHandler.removeCallbacks(artworkRetryRunnable);
+    }
+
+    private void performArtworkRetry() {
+        ObservedPlaybackSnapshot snapshot = currentSnapshot;
+        if (snapshot == null || !snapshot.hasTrackData()) {
+            cancelArtworkRetry();
+            return;
+        }
+        String trackKey = snapshot.getTrackKey();
+        if (!TextUtils.equals(trackKey, pendingArtworkTrackKey)) {
+            return;
+        }
+        if (snapshot.artwork != null) {
+            cancelArtworkRetry();
+            return;
+        }
+
+        if (tryRefreshArtwork(trackKey)) {
+            cancelArtworkRetry();
+            return;
+        }
+
+        pendingArtworkRetryAttempt++;
+        Log.d(
+                TAG,
+                "Artwork retry " + pendingArtworkRetryAttempt + "/" + ARTWORK_RETRY_MAX_ATTEMPTS
+                        + " for trackKey=" + trackKey
+        );
+        connectionManager.publishSnapshot(snapshot);
+        if (pendingArtworkRetryAttempt >= ARTWORK_RETRY_MAX_ATTEMPTS) {
+            cancelArtworkRetry();
+            return;
+        }
+        mainHandler.postDelayed(artworkRetryRunnable, ARTWORK_RETRY_DELAY_MS);
+    }
+
+    private boolean tryRefreshArtwork(String expectedTrackKey) {
+        MediaController controller = currentController;
+        if (controller != null) {
+            ObservedPlaybackSnapshot refreshedSnapshot = buildSnapshotFromController(controller);
+            if (refreshedSnapshot != null
+                    && refreshedSnapshot.artwork != null
+                    && TextUtils.equals(expectedTrackKey, refreshedSnapshot.getTrackKey())) {
+                publishSnapshot(refreshedSnapshot);
+                return true;
+            }
+        }
+
+        if (publishFromNotifications()) {
+            return currentSnapshot != null
+                    && currentSnapshot.artwork != null
+                    && TextUtils.equals(expectedTrackKey, currentSnapshot.getTrackKey());
+        }
+        return false;
     }
 
     private void startBluetoothServer() {

@@ -514,9 +514,18 @@ public final class HeadUnitCompanionManager {
                 return;
             }
             if (BridgeContract.TYPE_PLAYBACK.equals(decodedMessage.type)) {
+                String previousTrackKey = playbackPayload == null ? "" : playbackPayload.trackKey;
                 playbackPayload = decodedMessage.playbackPayload;
                 playbackReceivedElapsedMs = SystemClock.elapsedRealtime();
-                artworkBitmap = decodeArtwork(decodedMessage.playbackPayload.artworkBase64, artworkBitmap);
+                boolean trackChanged = !TextUtils.equals(previousTrackKey, decodedMessage.playbackPayload.trackKey);
+                if (trackChanged && TextUtils.isEmpty(decodedMessage.playbackPayload.artworkBase64)) {
+                    artworkBitmap = null;
+                } else {
+                    artworkBitmap = decodeArtwork(
+                            decodedMessage.playbackPayload.artworkBase64,
+                            trackChanged ? null : artworkBitmap
+                    );
+                }
                 Log.d(
                         TAG,
                         "Received playback title=" + decodedMessage.playbackPayload.title

@@ -178,7 +178,7 @@
                 <LinearLayout
                     android:id="@+id/lyricsStage"
                     android:layout_width="match_parent"
-                    android:layout_height="196dp"
+                    android:layout_height="210dp"
                     android:layout_marginTop="18dp"
                     android:gravity="top"
                     android:orientation="vertical">
@@ -209,38 +209,55 @@
                         android:id="@+id/lyricLineCurrent"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginBottom="16dp"
-                        android:background="@drawable/bg_lyric_focus"
+                        android:layout_marginTop="10dp"
+                        android:layout_marginBottom="8dp"
                         android:gravity="center_horizontal"
-                        android:minHeight="62dp"
-                        android:paddingLeft="18dp"
-                        android:paddingTop="12dp"
-                        android:paddingRight="18dp"
-                        android:paddingBottom="12dp"
+                        android:includeFontPadding="false"
+                        android:lineSpacingExtra="4dp"
+                        android:maxLines="2"
+                        android:minHeight="0dp"
+                        android:paddingLeft="12dp"
+                        android:paddingTop="0dp"
+                        android:paddingRight="12dp"
+                        android:paddingBottom="0dp"
+                        android:shadowColor="#C4000000"
+                        android:shadowDx="0"
+                        android:shadowDy="4"
+                        android:shadowRadius="18"
                         android:textColor="@android:color/white"
-                        android:textSize="22sp"
+                        android:textSize="34sp"
                         android:textStyle="bold" />
+
+                    <View
+                        android:layout_width="260dp"
+                        android:layout_height="2dp"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginBottom="12dp"
+                        android:background="@drawable/bg_lyric_divider" />
 
                     <TextView
                         android:id="@+id/lyricLineLower"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center_horizontal"
-                        android:paddingTop="12dp"
-                        android:paddingBottom="12dp"
-                        android:textColor="#89B2CC"
-                        android:textSize="18sp" />
+                        android:includeFontPadding="false"
+                        android:lineSpacingExtra="2dp"
+                        android:paddingTop="6dp"
+                        android:paddingBottom="6dp"
+                        android:textColor="#B7D3E7"
+                        android:textSize="26sp" />
 
                     <TextView
                         android:id="@+id/lyricLineBottom"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center_horizontal"
-                        android:paddingTop="12dp"
-                        android:paddingBottom="12dp"
-                        android:textColor="#618EAC"
-                        android:textSize="16sp" />
+                        android:includeFontPadding="false"
+                        android:lineSpacingExtra="2dp"
+                        android:paddingTop="10dp"
+                        android:paddingBottom="4dp"
+                        android:textColor="#7697AF"
+                        android:textSize="20sp" />
                 </LinearLayout>
 
                 <TextView
@@ -258,7 +275,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="146dp"
+            android:layout_height="170dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_panel"
             android:gravity="center_vertical"
@@ -280,14 +297,14 @@
                     android:layout_height="wrap_content"
                     android:text="00:00"
                     android:textColor="@android:color/white"
-                    android:textSize="18sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
 
                 <ProgressBar
                     android:id="@+id/progressBar"
                     style="?android:attr/progressBarStyleHorizontal"
                     android:layout_width="0dp"
-                    android:layout_height="10dp"
+                    android:layout_height="8dp"
                     android:layout_marginLeft="14dp"
                     android:layout_marginRight="14dp"
                     android:layout_weight="1"
@@ -301,46 +318,46 @@
                     android:layout_height="wrap_content"
                     android:text="00:00"
                     android:textColor="@android:color/white"
-                    android:textSize="18sp"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
+                android:layout_marginTop="12dp"
                 android:gravity="center"
                 android:orientation="horizontal">
 
                 <ImageButton
                     android:id="@+id/previousButton"
-                    android:layout_width="62dp"
-                    android:layout_height="62dp"
-                    android:layout_marginRight="26dp"
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:layout_marginRight="28dp"
                     android:background="@drawable/bg_media_button_secondary"
                     android:contentDescription="@string/previous"
-                    android:padding="18dp"
+                    android:padding="19dp"
                     android:scaleType="centerInside"
                     android:src="@drawable/ic_skip_previous" />
 
                 <ImageButton
                     android:id="@+id/playPauseButton"
-                    android:layout_width="84dp"
-                    android:layout_height="84dp"
-                    android:layout_marginRight="26dp"
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:layout_marginRight="28dp"
                     android:background="@drawable/bg_media_button_primary"
                     android:contentDescription="@string/play"
-                    android:padding="22dp"
+                    android:padding="24dp"
                     android:scaleType="centerInside"
                     android:src="@drawable/ic_play" />
 
                 <ImageButton
                     android:id="@+id/nextButton"
-                    android:layout_width="62dp"
-                    android:layout_height="62dp"
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
                     android:background="@drawable/bg_media_button_secondary"
                     android:contentDescription="@string/next"
-                    android:padding="18dp"
+                    android:padding="19dp"
                     android:scaleType="centerInside"
                     android:src="@drawable/ic_skip_next" />
             </LinearLayout>
