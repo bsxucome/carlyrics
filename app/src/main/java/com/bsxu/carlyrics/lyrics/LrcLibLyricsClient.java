@@ -1,5 +1,7 @@
 package com.bsxu.carlyrics.lyrics;
 
+import android.util.Log;
+
 import com.bsxu.carlyrics.model.LyricLine;
 import com.bsxu.carlyrics.model.LyricsResult;
 
@@ -14,16 +16,37 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.X509TrustManager;
 
 public final class LrcLibLyricsClient {
 
+    private static final String TAG = "LrcLibClient";
     private static final String GET_URL = "https://lrclib.net/api/get";
     private static final String SEARCH_URL = "https://lrclib.net/api/search";
+    private static final String LRCLIB_HOST = "lrclib.net";
     private static final String USER_AGENT = "CarLyricsDisplay/0.2";
     private static final int MATCH_NONE = 0;
     private static final int MATCH_CONTAINS = 1;
     private static final int MATCH_EXACT = 2;
+    private static final AtomicBoolean insecureTlsLogPrinted = new AtomicBoolean(false);
+    private static final SSLSocketFactory INSECURE_SSL_SOCKET_FACTORY = buildInsecureSocketFactory();
+    private static final HostnameVerifier INSECURE_HOSTNAME_VERIFIER = new HostnameVerifier() {
+        @Override
+        public boolean verify(String hostname, SSLSession session) {
+            return LRCLIB_HOST.equalsIgnoreCase(hostname) || ("www." + LRCLIB_HOST).equalsIgnoreCase(hostname);
+        }
+    };
 
     public LyricsResult fetch(String title, String artist, String album, long durationMs) {
         QueryVariant primary = new QueryVariant(title, artist, album);
@@ -81,6 +104,7 @@ public final class LrcLibLyricsClient {
             CandidateScore candidateScore = scoreCandidate(jsonObject, parsedResult, queryVariant, durationMs);
             return passesConfidenceGate(candidateScore) ? parsedResult : null;
         } catch (IOException ignored) {
+            Log.w(TAG, "Exact lyrics lookup failed for " + queryVariant.title + " / " + queryVariant.artist, ignored);
             return null;
         } catch (JSONException ignored) {
             return null;
@@ -133,6 +157,7 @@ public final class LrcLibLyricsClient {
             }
             return bestResult;
         } catch (IOException ignored) {
+            Log.w(TAG, "Search lyrics lookup failed for " + queryVariant.title + " / " + queryVariant.artist, ignored);
             return null;
         } catch (JSONException ignored) {
             return null;
@@ -144,13 +169,31 @@ public final class LrcLibLyricsClient {
     }
 
     private HttpURLConnection openConnection(String urlString) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
+        URL url = new URL(urlString);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("GET");
         connection.setConnectTimeout(4000);
         connection.setReadTimeout(4000);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", USER_AGENT);
+        maybeAllowInsecureTls(url, connection);
         return connection;
+    }
+
+    private void maybeAllowInsecureTls(URL url, HttpURLConnection connection) {
+        if (!(connection instanceof HttpsURLConnection) || url == null) {
+            return;
+        }
+        String host = url.getHost();
+        if (!LRCLIB_HOST.equalsIgnoreCase(host) && !("www." + LRCLIB_HOST).equalsIgnoreCase(host)) {
+            return;
+        }
+        HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
+        httpsConnection.setSSLSocketFactory(INSECURE_SSL_SOCKET_FACTORY);
+        httpsConnection.setHostnameVerifier(INSECURE_HOSTNAME_VERIFIER);
+        if (insecureTlsLogPrinted.compareAndSet(false, true)) {
+            Log.w(TAG, "Using insecure TLS fallback for lrclib.net because the upstream certificate is currently invalid");
+        }
     }
 
     private LyricsResult parseLyricsResult(JSONObject jsonObject, String sourceLabel) {
@@ -277,6 +320,31 @@ public final class LrcLibLyricsClient {
             return builder.toString();
         } finally {
             reader.close();
+        }
+    }
+
+    private static SSLSocketFactory buildInsecureSocketFactory() {
+        try {
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new X509TrustManager[]{
+                    new X509TrustManager() {
+                        @Override
+                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                        }
+
+                        @Override
+                        public X509Certificate[] getAcceptedIssuers() {
+                            return new X509Certificate[0];
+                        }
+                    }
+            }, new SecureRandom());
+            return sslContext.getSocketFactory();
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Unable to initialize insecure LRCLIB TLS fallback", exception);
         }
     }
 

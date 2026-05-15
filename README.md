@@ -2,6 +2,11 @@
 
 Lightweight Android head-unit app for Bluetooth music lyrics display.
 
+This project ships as two Android apps:
+
+- `app`: the head-unit app installed on the car screen
+- `phone`: the phone companion app installed on the Android phone
+
 ## Goals
 
 - Show current track title, artist, artwork, and playback controls while a phone is playing music over Bluetooth
@@ -10,6 +15,8 @@ Lightweight Android head-unit app for Bluetooth music lyrics display.
 
 ## Current architecture
 
+- The phone companion reads the current media session, playback state, artwork, and lyrics
+- The head-unit app connects to the phone companion over Bluetooth Classic RFCOMM
 - `NotificationListenerService` watches active media notifications
 - `MediaSessionManager` provides the best available media session, playback state, and transport controls
 - The app prefers media-session metadata and falls back to notification metadata when needed
@@ -29,24 +36,61 @@ Lightweight Android head-unit app for Bluetooth music lyrics display.
 
 ## Important files
 
-- `app/src/main/java/com/codex/carlyrics/MainActivity.java`
+- `app/src/main/java/com/bsxu/carlyrics/MainActivity.java`
   Main UI, lyric rendering, import flow, and diagnostics
-- `app/src/main/java/com/codex/carlyrics/playback/MediaObserverService.java`
-  Media-session and notification observer
-- `app/src/main/java/com/codex/carlyrics/playback/PlaybackRepository.java`
-  Playback state store and transport control bridge
-- `app/src/main/java/com/codex/carlyrics/lyrics/LyricsRepository.java`
-  Lyric cache, imported-lyrics override, and lookup orchestration
-- `app/src/main/java/com/codex/carlyrics/lyrics/LrcLibLyricsClient.java`
-  LRCLIB exact-match and search client
-- `app/src/main/java/com/codex/carlyrics/lyrics/LrcParser.java`
-  LRC parser
+- `app/src/main/java/com/bsxu/carlyrics/companion/HeadUnitCompanionManager.java`
+  Bluetooth client, handshake, reconnect, and remote session state on the head unit
+- `phone/src/main/java/com/bsxu/carlyrics/phone/PhoneMainActivity.java`
+  Phone-side setup UI for permissions and service readiness
+- `phone/src/main/java/com/bsxu/carlyrics/phone/companion/PhoneCompanionService.java`
+  Phone media-session observer and lyrics publishing flow
+- `phone/src/main/java/com/bsxu/carlyrics/phone/companion/PhoneConnectionManager.java`
+  Bluetooth server, handshake, keepalive, and control-message handling on the phone
+- `bridge/src/main/java/com/bsxu/carlyrics/bridge/`
+  Shared wire protocol models and codec
+
+## Release packages
+
+Each GitHub Release contains two APKs:
+
+- `carlyrics-headunit-vX.Y.Z-release.apk`
+  Install this on the Android head unit
+- `carlyrics-phone-companion-vX.Y.Z-release.apk`
+  Install this on the Android phone that plays music
+
+There is also a `SHA256SUMS.txt` file and a zip archive containing the same release assets.
+
+## Install and first-time setup
+
+1. Download the latest release assets from GitHub Releases.
+2. Install `carlyrics-phone-companion-vX.Y.Z-release.apk` on the Android phone.
+3. Install `carlyrics-headunit-vX.Y.Z-release.apk` on the Android head unit.
+4. Pair the phone and the head unit in normal Bluetooth settings first.
+5. Open the phone companion app and grant:
+   notification access, app notifications, and Bluetooth / nearby devices permission.
+6. Start music playback on the phone once so the companion can detect the active media session.
+7. Open the head-unit app, tap `Connect phone`, and select the paired phone.
+8. Wait for the phone companion state to become ready, then verify title, artwork, progress, and lyrics appear on the head unit.
+
+## Normal usage
+
+- Keep the phone companion installed on the same phone you use for music playback
+- Keep Bluetooth enabled on both devices
+- Launch the phone companion after reboot if your device aggressively stops background services
+- Use the diagnostics panel on the head unit if metadata or lyrics do not appear as expected
+
+## Upgrade notes
+
+- Install upgrades with the same signing key so Android can update the existing apps in place
+- The head-unit app and phone companion should be upgraded together when possible
+- If you publish your own builds, keep `versionCode` increasing for both modules
 
 ## Build notes
 
 - Minimum SDK: `21`
 - Target SDK: `34`
-- Local SDK path is currently set in `local.properties` to `D:\Android`
+- This repository builds both the head-unit app and the phone companion app
+- Set your own Android SDK path in `local.properties`
 
 ## Real-world limitations
 
