@@ -103,7 +103,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:maxLines="2"
-                    android:text="@string/default_title"
+                    android:text="@string/default_title_companion"
                     android:textColor="@android:color/white"
                     android:textSize="34sp"
                     android:textStyle="bold" />
@@ -114,7 +114,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:maxLines="1"
-                    android:text="@string/default_artist"
+                    android:text="@string/default_artist_companion"
                     android:textColor="#EDF7FFFF"
                     android:textSize="20sp" />
 
@@ -124,7 +124,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
                     android:maxLines="1"
-                    android:text="@string/default_source"
+                    android:text="@string/default_source_companion"
                     android:textColor="#89BED8F3"
                     android:textSize="12sp" />
 

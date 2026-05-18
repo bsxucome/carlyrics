@@ -15,22 +15,17 @@ This project ships as two Android apps:
 
 ## Current architecture
 
-- The phone companion reads the current media session, playback state, artwork, and lyrics
-- The head-unit app connects to the phone companion over Bluetooth Classic RFCOMM
-- `NotificationListenerService` watches active media notifications
-- `MediaSessionManager` provides the best available media session, playback state, and transport controls
-- The app prefers media-session metadata and falls back to notification metadata when needed
-- Lyrics are matched online first, then cached locally
-- Users can import a local `.lrc` file for the current track and override automatic matching
+- The phone companion is the only runtime source of playback metadata, artwork, and lyrics
+- The phone companion reads the active media session, falls back to notification artwork when needed, fetches lyrics, and serves that state over Bluetooth Classic RFCOMM
+- The head-unit app only connects to the phone companion, renders the remote session state, and sends playback control actions back to the phone
+- The old local head-unit media observer and local head-unit lyrics lookup path have been removed from the active architecture
 
 ## Implemented features
 
 - Large-screen now-playing UI for car dashboards
 - Artwork, title, artist, package name, and play-state display
 - Previous / play-pause / next controls
-- Auto lyric matching through LRCLIB exact lookup plus search fallback
-- Local `.lrc` or plain-text lyric import for the current track
-- Manual-lyrics override removal and automatic matching restore
+- Auto lyric matching on the phone companion through LRCLIB exact lookup plus search fallback
 - Synced lyric highlight and auto-scroll
 - Lightweight diagnostics panel for package/source debugging on real head units
 
@@ -43,9 +38,9 @@ This project ships as two Android apps:
 - `phone/src/main/java/com/bsxu/carlyrics/phone/PhoneMainActivity.java`
   Phone-side setup UI for permissions and service readiness
 - `phone/src/main/java/com/bsxu/carlyrics/phone/companion/PhoneCompanionService.java`
-  Phone media-session observer and lyrics publishing flow
+  Phone media-session observer, artwork resolution, and lyrics publishing flow
 - `phone/src/main/java/com/bsxu/carlyrics/phone/companion/PhoneConnectionManager.java`
-  Bluetooth server, handshake, keepalive, and control-message handling on the phone
+  The only Bluetooth transport implementation on the phone: server, handshake, keepalive, state publish, and control-message handling
 - `bridge/src/main/java/com/bsxu/carlyrics/bridge/`
   Shared wire protocol models and codec
 
@@ -77,6 +72,7 @@ There is also a `SHA256SUMS.txt` file and a zip archive containing the same rele
 - Keep the phone companion installed on the same phone you use for music playback
 - Keep Bluetooth enabled on both devices
 - Launch the phone companion after reboot if your device aggressively stops background services
+- The head-unit app does not scan the local media session or fetch lyrics by itself; if the phone companion is not connected, the head unit is intentionally render-only
 - Use the diagnostics panel on the head unit if metadata or lyrics do not appear as expected
 
 ## Upgrade notes
@@ -95,8 +91,7 @@ There is also a `SHA256SUMS.txt` file and a zip archive containing the same rele
 ## Real-world limitations
 
 This app cannot directly read a phone player's private lyric stream from standard Bluetooth audio.
-In most cases, Bluetooth only exposes media metadata and playback state to the head unit.
-That means lyrics must usually be matched on the head unit side by track metadata, or imported manually.
+In most cases, Bluetooth only exposes media metadata and playback state, so this project relies on the phone companion to collect the media session and perform lyrics lookup before sending the result to the head unit.
 
 Head-unit Bluetooth stacks vary a lot:
 
@@ -106,7 +101,7 @@ Head-unit Bluetooth stacks vary a lot:
 
 ## Suggested next steps
 
-1. Install the APK on the target head unit and verify which package name exposes the Bluetooth media session
-2. Test the diagnostics panel while switching between phone players and Bluetooth sources
-3. Add a second lyrics provider if LRCLIB coverage is not enough for your music library
-4. Add a notification-only fallback branch if you must support Android 4.4 based head units
+1. Test the diagnostics panel while switching between phone players and Bluetooth sources
+2. Add a second phone-side lyrics provider if LRCLIB coverage is not enough for your music library
+3. Harden pairing / trusted-device recovery flows across phone replacements and app reinstalls
+4. Add richer head-unit diagnostics or onboarding if users frequently miss the phone companion setup requirements

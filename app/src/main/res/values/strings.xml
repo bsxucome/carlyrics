@@ -5,13 +5,9 @@
     <string name="permission_desc">Pair the phone first, then connect this head-unit app to the phone companion over Bluetooth Classic.</string>
     <string name="open_permission">Connect phone</string>
     <string name="artwork_desc">Current track artwork</string>
-    <string name="default_title">Waiting for phone companion</string>
-    <string name="default_artist">Open the phone app and start music there</string>
-    <string name="default_source">Bluetooth companion sync</string>
     <string name="default_title_companion">Waiting for phone companion</string>
     <string name="default_artist_companion">Start music playback on the connected phone</string>
     <string name="default_source_companion">Bluetooth companion sync</string>
-    <string name="default_progress">00:00 / 00:00</string>
     <string name="default_lyrics_status">Lyrics status: waiting for phone playback</string>
     <string name="default_diagnostics">Diagnostics: phone companion not connected yet</string>
     <string name="previous">Previous</string>
@@ -19,16 +15,8 @@
     <string name="pause">Pause</string>
     <string name="next">Next</string>
     <string name="retry_lyrics">Refresh sync</string>
-    <string name="lyrics_placeholder">Lyrics from the phone companion will appear here</string>
-    <string name="lyrics_placeholder_companion">Lyrics from the phone companion will appear here</string>
-    <string name="lyrics_not_found">No reliable lyrics matched on the phone side for this track.</string>
-    <string name="lyrics_loading">Waiting for the phone companion to send lyrics...</string>
     <string name="lyrics_waiting_remote">Waiting for lyrics from the phone companion...</string>
     <string name="lyrics_status_prefix">Lyrics status: </string>
-    <string name="status_waiting_media">Waiting for phone playback...</string>
-    <string name="status_source_session">Phone companion audio</string>
-    <string name="status_source_notification">Phone companion</string>
-    <string name="status_source_unknown">Connected source</string>
     <string name="debug_shown">Debug info shown</string>
     <string name="debug_hidden">Debug info hidden</string>
     <string name="waiting_for_phone_companion">Waiting for phone companion...</string>
@@ -39,7 +27,6 @@
     <string name="disconnect_phone_companion">Disconnect</string>
     <string name="phone_companion_disconnected">Phone companion disconnected</string>
     <string name="connecting_to_phone">Connecting to %1$s...</string>
-    <string name="connecting_to_phone_candidates">Trying %1$d paired phones...</string>
     <string name="select_phone_companion">Select paired phone</string>
     <string name="paired_device_item">%1$s\n%2$s</string>
     <string name="paired_device_item_last_used">%1$s (last used)\n%2$s</string>
@@ -59,7 +46,6 @@
     <string name="connection_state_trying_device">Trying %1$s (%2$d/%3$d)...</string>
     <string name="connection_state_unreachable">Unable to reach any paired phone companion</string>
     <string name="connection_state_reconnecting_last">Reconnecting to the last phone companion...</string>
-    <string name="connection_state_disconnected_from">Disconnected from %1$s</string>
     <string name="connection_state_connected_to">Connected to %1$s</string>
     <string name="generic_phone_device">Phone</string>
     <string name="head_unit_device_fallback">Head unit</string>

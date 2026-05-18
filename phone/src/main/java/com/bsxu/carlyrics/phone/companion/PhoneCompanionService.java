@@ -1,13 +1,7 @@
 package com.bsxu.carlyrics.phone.companion;
 
-import android.Manifest;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothServerSocket;
-import android.bluetooth.BluetoothSocket;
 import android.content.ComponentName;
-import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.Bitmap.CompressFormat;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.MediaDescription;
@@ -23,56 +17,25 @@ import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
-import android.util.Base64;
 import android.util.Log;
 
-import com.bsxu.carlyrics.phone.R;
-import com.bsxu.carlyrics.bridge.BridgeCodec;
-import com.bsxu.carlyrics.bridge.BridgeContract;
-import com.bsxu.carlyrics.bridge.ControlMessage;
-import com.bsxu.carlyrics.bridge.DecodedMessage;
-import com.bsxu.carlyrics.bridge.HelloMessage;
-import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
-import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsRepository;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsResult;
 
-import org.json.JSONException;
-
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
 
 public class PhoneCompanionService extends NotificationListenerService {
 
     private static final String TAG = "PhoneCompanion";
     private static final long ARTWORK_RETRY_DELAY_MS = 400L;
     private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 5;
-    private static volatile String uiStatus = "";
-    private static volatile boolean listenerActive = false;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<MediaController> activeControllers = new ArrayList<MediaController>();
     private final HashMap<MediaController, MediaController.Callback> controllerCallbacks =
             new HashMap<MediaController, MediaController.Callback>();
-
-    private final Runnable heartbeatSender = new Runnable() {
-        @Override
-        public void run() {
-            if (currentSnapshot != null && currentSnapshot.playing) {
-                sendPlaybackSnapshot(false);
-                maybeResendLyrics();
-            }
-            mainHandler.postDelayed(this, 1000L);
-        }
-    };
 
     private final MediaSessionManager.OnActiveSessionsChangedListener activeSessionsChangedListener =
             new MediaSessionManager.OnActiveSessionsChangedListener() {
@@ -90,80 +53,61 @@ public class PhoneCompanionService extends NotificationListenerService {
         }
     };
 
+    private final PhoneConnectionManager.ControlDelegate controlDelegate =
+            new PhoneConnectionManager.ControlDelegate() {
+                @Override
+                public void onPlayPauseRequested() {
+                    if (currentController == null) {
+                        return;
+                    }
+                    if (currentSnapshot != null && currentSnapshot.playing) {
+                        currentController.getTransportControls().pause();
+                    } else {
+                        currentController.getTransportControls().play();
+                    }
+                }
+
+                @Override
+                public void onNextRequested() {
+                    if (currentController != null) {
+                        currentController.getTransportControls().skipToNext();
+                    }
+                }
+
+                @Override
+                public void onPreviousRequested() {
+                    if (currentController != null) {
+                        currentController.getTransportControls().skipToPrevious();
+                    }
+                }
+
+                @Override
+                public void onResendLyricsRequested() {
+                    if (currentLyricsResult != null) {
+                        connectionManager.publishLyrics(currentLyricsResult);
+                    } else {
+                        requestLyricsForCurrentTrack(true);
+                    }
+                }
+            };
+
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
     private PhoneConnectionManager connectionManager;
 
-    private final PhoneConnectionManager.ControlDelegate controlDelegate = new PhoneConnectionManager.ControlDelegate() {
-        @Override
-        public void onPlayPauseRequested() {
-            if (currentController == null) {
-                return;
-            }
-            if (currentSnapshot != null && currentSnapshot.playing) {
-                currentController.getTransportControls().pause();
-            } else {
-                currentController.getTransportControls().play();
-            }
-        }
-
-        @Override
-        public void onNextRequested() {
-            if (currentController != null) {
-                currentController.getTransportControls().skipToNext();
-            }
-        }
-
-        @Override
-        public void onPreviousRequested() {
-            if (currentController != null) {
-                currentController.getTransportControls().skipToPrevious();
-            }
-        }
-
-        @Override
-        public void onResendLyricsRequested() {
-            if (currentLyricsResult != null) {
-                connectionManager.publishLyrics(currentLyricsResult);
-            } else {
-                requestLyricsForCurrentTrack(true);
-            }
-        }
-    };
-
-    private volatile BluetoothServerSocket serverSocket;
-    private volatile BluetoothServerSocket insecureServerSocket;
-    private volatile BluetoothSocket clientSocket;
-    private volatile BufferedWriter writer;
-    private volatile Thread acceptThread;
-    private volatile Thread insecureAcceptThread;
-    private volatile Thread readThread;
     private volatile MediaController currentController;
     private volatile ObservedPlaybackSnapshot currentSnapshot;
     private volatile PhoneLyricsResult currentLyricsResult;
     private volatile String currentTrackKey = "";
-    private volatile String connectedClientName = "";
     private volatile long lastLyricsAttemptElapsedMs;
-    private volatile String lastArtworkSentTrackKey = "";
-    private volatile String lastLyricsSentTrackKey = "";
-    private volatile long lastLyricsSentElapsedMs;
     private volatile String pendingArtworkTrackKey = "";
     private volatile int pendingArtworkRetryAttempt;
-
-    public static String getUiStatus() {
-        return uiStatus;
-    }
-
-    public static boolean isListenerActive() {
-        return listenerActive;
-    }
 
     @Override
     public void onCreate() {
         super.onCreate();
         lyricsRepository = new PhoneLyricsRepository();
         connectionManager = PhoneConnectionManager.getInstance(this);
-        listenerActive = false;
         connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
         connectionManager.setNotificationListenerActive(false);
         connectionManager.setMediaState(false, false, false);
@@ -181,20 +125,18 @@ public class PhoneCompanionService extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
-        listenerActive = true;
         attachMediaSessionListener();
         connectionManager.setControlDelegate(controlDelegate);
         connectionManager.start();
         connectionManager.setNotificationAccessGranted(true);
         connectionManager.setNotificationListenerActive(true);
-        publishFromNotifications();
         publishBestControllerSnapshot();
+        publishFromNotifications();
         Log.i(TAG, "Notification listener connected");
     }
 
     @Override
     public void onListenerDisconnected() {
-        listenerActive = false;
         connectionManager.clearControlDelegate(controlDelegate);
         detachMediaSessionListener();
         currentController = null;
@@ -450,8 +392,6 @@ public class PhoneCompanionService extends NotificationListenerService {
         if (trackChanged) {
             currentLyricsResult = null;
             lastLyricsAttemptElapsedMs = 0L;
-            lastLyricsSentTrackKey = "";
-            lastArtworkSentTrackKey = "";
             cancelArtworkRetry();
         }
         Log.i(
@@ -491,7 +431,11 @@ public class PhoneCompanionService extends NotificationListenerService {
                 if (result == null) {
                     Log.i(TAG, "Lyrics lookup returned null for trackKey=" + expectedTrackKey);
                     connectionManager.clearLyricsForTrack(expectedTrackKey);
-                    connectionManager.setMediaState(true, currentSnapshot != null && currentSnapshot.hasTrackData(), false);
+                    connectionManager.setMediaState(
+                            true,
+                            currentSnapshot != null && currentSnapshot.hasTrackData(),
+                            false
+                    );
                 } else {
                     Log.i(
                             TAG,
@@ -593,286 +537,6 @@ public class PhoneCompanionService extends NotificationListenerService {
         return false;
     }
 
-    private void startBluetoothServer() {
-        if (!hasBluetoothPermission()) {
-            Log.w(TAG, "Bluetooth permission missing");
-            updateUiStatus(getString(R.string.status_bluetooth_missing_runtime));
-            return;
-        }
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-        if (adapter == null) {
-            Log.w(TAG, "Bluetooth adapter not available");
-            updateUiStatus(getString(R.string.status_bluetooth_not_available));
-            return;
-        }
-        if (!adapter.isEnabled()) {
-            Log.w(TAG, "Bluetooth adapter disabled");
-            updateUiStatus(getString(R.string.status_turn_on_bluetooth));
-            return;
-        }
-        if (serverSocket != null || insecureServerSocket != null) {
-            return;
-        }
-
-        try {
-            serverSocket = adapter.listenUsingRfcommWithServiceRecord(
-                    "CarLyricsPhoneCompanion",
-                    UUID.fromString(BridgeContract.APP_UUID)
-            );
-            Log.i(TAG, "Secure RFCOMM server opened");
-        } catch (IOException error) {
-            Log.e(TAG, "Failed to open secure Bluetooth server", error);
-            updateUiStatus(getString(R.string.status_bluetooth_server_failed));
-        }
-
-        try {
-            insecureServerSocket = adapter.listenUsingInsecureRfcommWithServiceRecord(
-                    "CarLyricsPhoneCompanionInsecure",
-                    UUID.fromString(BridgeContract.APP_UUID)
-            );
-            Log.i(TAG, "Insecure RFCOMM server opened");
-        } catch (IOException error) {
-            Log.e(TAG, "Failed to open insecure Bluetooth server", error);
-        }
-
-        if (serverSocket == null && insecureServerSocket == null) {
-            updateUiStatus(getString(R.string.status_bluetooth_server_failed));
-            return;
-        }
-
-        if (serverSocket != null) {
-            acceptThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    acceptLoop(serverSocket, "secure");
-                }
-            }, "phone-companion-accept-secure");
-            acceptThread.start();
-        }
-        if (insecureServerSocket != null) {
-            insecureAcceptThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    acceptLoop(insecureServerSocket, "insecure");
-                }
-            }, "phone-companion-accept-insecure");
-            insecureAcceptThread.start();
-        }
-    }
-
-    private void stopBluetoothServer() {
-        closeClientConnection();
-        closeServerSocket(serverSocket);
-        closeServerSocket(insecureServerSocket);
-        serverSocket = null;
-        insecureServerSocket = null;
-        acceptThread = null;
-        insecureAcceptThread = null;
-    }
-
-    private void acceptLoop(BluetoothServerSocket activeServerSocket, String modeLabel) {
-        if (activeServerSocket == null) {
-            return;
-        }
-        while (activeServerSocket == serverSocket || activeServerSocket == insecureServerSocket) {
-            try {
-                BluetoothSocket acceptedSocket = activeServerSocket.accept();
-                if (acceptedSocket != null) {
-                    Log.i(TAG, "Accepted " + modeLabel + " RFCOMM connection");
-                    onClientConnected(acceptedSocket, modeLabel);
-                }
-            } catch (IOException acceptError) {
-                Log.w(TAG, "Accept loop ended for " + modeLabel + " RFCOMM", acceptError);
-                return;
-            }
-        }
-    }
-
-    private void closeServerSocket(BluetoothServerSocket activeServerSocket) {
-        if (activeServerSocket == null) {
-            return;
-        }
-        try {
-            activeServerSocket.close();
-        } catch (IOException ignored) {
-        }
-    }
-
-    private void onClientConnected(BluetoothSocket acceptedSocket, String modeLabel) {
-        closeClientConnection();
-        clientSocket = acceptedSocket;
-        connectedClientName = safeName(acceptedSocket.getRemoteDevice() == null
-                ? ""
-                : acceptedSocket.getRemoteDevice().getName());
-        try {
-            writer = new BufferedWriter(new OutputStreamWriter(acceptedSocket.getOutputStream(), "UTF-8"));
-            writeLine(BridgeCodec.encodeHello(new HelloMessage(
-                    BridgeContract.PROTOCOL_VERSION,
-                    connectionManager == null ? "" : new PhoneIdentityStore(this).getOrCreateLocalAppDeviceId(),
-                    BridgeContract.ROLE_PHONE,
-                    safeName(Build.MODEL),
-                    "0.2.0"
-            )));
-            sendPlaybackSnapshot(true);
-            sendLyricsPayload();
-            if (currentSnapshot != null && currentLyricsResult == null) {
-                Log.i(TAG, "Client connected before lyrics were ready, retrying lyrics lookup");
-                requestLyricsForCurrentTrack(false);
-            }
-            Log.i(TAG, "Client connected via " + modeLabel + " RFCOMM from " + connectedClientName);
-            updateUiStatus(getString(R.string.status_connected_to, connectedClientName));
-        } catch (IOException error) {
-            Log.e(TAG, "Failed while preparing connected client session", error);
-            closeClientConnection();
-            updateUiStatus(getString(R.string.status_waiting_reconnect));
-            return;
-        }
-
-        readThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                readLoop();
-            }
-        }, "phone-companion-read");
-        readThread.start();
-    }
-
-    private void readLoop() {
-        BluetoothSocket activeSocket = clientSocket;
-        if (activeSocket == null) {
-            return;
-        }
-        BufferedReader reader = null;
-        try {
-            reader = new BufferedReader(new InputStreamReader(activeSocket.getInputStream(), "UTF-8"));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                handleIncomingLine(line);
-            }
-        } catch (IOException ignored) {
-        } finally {
-            closeReaderQuietly(reader);
-            closeClientConnection();
-            Log.i(TAG, "Client disconnected");
-            updateUiStatus(getString(R.string.status_ready));
-        }
-    }
-
-    private void handleIncomingLine(String line) {
-        try {
-            DecodedMessage message = BridgeCodec.decode(line);
-            if (!BridgeContract.TYPE_CONTROL.equals(message.type) || message.controlMessage == null) {
-                return;
-            }
-            handleControlMessage(message.controlMessage);
-        } catch (JSONException ignored) {
-        }
-    }
-
-    private void handleControlMessage(ControlMessage message) {
-        if (message == null || currentController == null) {
-            return;
-        }
-        if (BridgeContract.ACTION_PLAY_PAUSE.equals(message.action)) {
-            if (currentSnapshot != null && currentSnapshot.playing) {
-                currentController.getTransportControls().pause();
-            } else {
-                currentController.getTransportControls().play();
-            }
-            return;
-        }
-        if (BridgeContract.ACTION_NEXT.equals(message.action)) {
-            currentController.getTransportControls().skipToNext();
-            return;
-        }
-        if (BridgeContract.ACTION_PREVIOUS.equals(message.action)) {
-            currentController.getTransportControls().skipToPrevious();
-            return;
-        }
-        if (BridgeContract.ACTION_RESEND_LYRICS.equals(message.action)) {
-            if (currentLyricsResult != null) {
-                sendLyricsPayload();
-            } else {
-                requestLyricsForCurrentTrack(true);
-            }
-        }
-    }
-
-    private void sendPlaybackSnapshot(boolean includeArtwork) {
-        if (writer == null || currentSnapshot == null || !currentSnapshot.hasTrackData()) {
-            return;
-        }
-        boolean shouldIncludeArtwork = includeArtwork
-                || (currentSnapshot.artwork != null
-                && !TextUtils.equals(lastArtworkSentTrackKey, currentSnapshot.getTrackKey()));
-        String artworkBase64 = shouldIncludeArtwork ? encodeArtworkToBase64(currentSnapshot.artwork) : "";
-        RemotePlaybackPayload payload = new RemotePlaybackPayload(
-                currentSnapshot.getTrackKey(),
-                currentSnapshot.packageName,
-                currentSnapshot.title,
-                currentSnapshot.artist,
-                currentSnapshot.album,
-                currentSnapshot.durationMs,
-                currentSnapshot.getEstimatedPositionMs(),
-                currentSnapshot.playing,
-                artworkBase64
-        );
-        if (shouldIncludeArtwork && !TextUtils.isEmpty(artworkBase64)) {
-            lastArtworkSentTrackKey = currentSnapshot.getTrackKey();
-        }
-        Log.d(TAG, "sendPlaybackSnapshot includeArtwork=" + shouldIncludeArtwork + " artworkBytes=" + artworkBase64.length());
-        writeLine(BridgeCodec.encodePlayback(payload));
-    }
-
-    private void sendLyricsPayload() {
-        if (writer == null || currentSnapshot == null) {
-            return;
-        }
-        if (currentLyricsResult == null) {
-            return;
-        }
-        RemoteLyricsPayload payload = new RemoteLyricsPayload(
-                currentLyricsResult.trackKey,
-                currentLyricsResult.sourceLabel,
-                currentLyricsResult.synced,
-                currentLyricsResult.lines
-        );
-        lastLyricsSentTrackKey = currentLyricsResult.trackKey;
-        lastLyricsSentElapsedMs = android.os.SystemClock.elapsedRealtime();
-        Log.d(TAG, "sendLyricsPayload lines=" + currentLyricsResult.lines.size() + " synced=" + currentLyricsResult.synced);
-        writeLine(BridgeCodec.encodeLyrics(payload));
-    }
-
-    private void writeLine(String line) {
-        BufferedWriter activeWriter = writer;
-        if (activeWriter == null || TextUtils.isEmpty(line)) {
-            return;
-        }
-        try {
-            activeWriter.write(line);
-            activeWriter.write('\n');
-            activeWriter.flush();
-        } catch (IOException ignored) {
-            closeClientConnection();
-            updateUiStatus(getString(R.string.status_ready));
-        }
-    }
-
-    private String encodeArtworkToBase64(Bitmap artwork) {
-        if (artwork == null) {
-            return "";
-        }
-        Bitmap scaled = Bitmap.createScaledBitmap(
-                artwork,
-                Math.max(1, artwork.getWidth() > artwork.getHeight() ? 320 : Math.round(320f * artwork.getWidth() / artwork.getHeight())),
-                Math.max(1, artwork.getHeight() >= artwork.getWidth() ? 320 : Math.round(320f * artwork.getHeight() / artwork.getWidth())),
-                true
-        );
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        scaled.compress(CompressFormat.JPEG, 82, outputStream);
-        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP);
-    }
-
     private Bitmap readNotificationArtwork(StatusBarNotification sbn) {
         if (sbn == null || sbn.getNotification() == null) {
             return null;
@@ -895,44 +559,6 @@ public class PhoneCompanionService extends NotificationListenerService {
             }
         }
         return null;
-    }
-
-    private boolean hasBluetoothPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return true;
-        }
-        return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void closeClientConnection() {
-        if (clientSocket != null) {
-            try {
-                clientSocket.close();
-            } catch (IOException ignored) {
-            }
-        }
-        clientSocket = null;
-        writer = null;
-        readThread = null;
-        connectedClientName = "";
-    }
-
-    private void closeReaderQuietly(BufferedReader reader) {
-        if (reader == null) {
-            return;
-        }
-        try {
-            reader.close();
-        } catch (IOException ignored) {
-        }
-    }
-
-    private String safeName(String value) {
-        return TextUtils.isEmpty(value) ? getString(R.string.generic_phone_device) : value;
-    }
-
-    private void updateUiStatus(String value) {
-        uiStatus = value == null ? "" : value;
     }
 
     private String firstNonEmpty(String... values) {
@@ -959,16 +585,5 @@ public class PhoneCompanionService extends NotificationListenerService {
         }
         long now = android.os.SystemClock.elapsedRealtime();
         return lastLyricsAttemptElapsedMs == 0L || now - lastLyricsAttemptElapsedMs >= 8000L;
-    }
-
-    private void maybeResendLyrics() {
-        if (currentLyricsResult == null || writer == null) {
-            return;
-        }
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (!TextUtils.equals(lastLyricsSentTrackKey, currentLyricsResult.trackKey)
-                || now - lastLyricsSentElapsedMs >= 5000L) {
-            sendLyricsPayload();
-        }
     }
 }
