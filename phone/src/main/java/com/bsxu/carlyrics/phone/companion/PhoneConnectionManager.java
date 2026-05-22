@@ -36,7 +36,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class PhoneConnectionManager {
 
@@ -128,6 +130,7 @@ public final class PhoneConnectionManager {
     private volatile String lastArtworkSentTrackKey = "";
     private volatile String lastLyricsSentTrackKey = "";
     private volatile long lastLyricsSentElapsedMs;
+    private final Map<String, String> artworkPayloadCache;
     private volatile RemoteSessionStatusPayload currentSessionStatus =
             new RemoteSessionStatusPayload(false, false, false, false, false);
     private volatile boolean shouldRun = false;
@@ -138,6 +141,7 @@ public final class PhoneConnectionManager {
         this.identityStore = new PhoneIdentityStore(appContext);
         this.writeLock = new Object();
         this.sessionLock = new Object();
+        this.artworkPayloadCache = new ConcurrentHashMap<String, String>();
         updateUiStatus(appContext.getString(R.string.status_idle));
     }
 
@@ -587,7 +591,7 @@ public final class PhoneConnectionManager {
         boolean shouldIncludeArtwork = includeArtwork
                 || (currentSnapshot.artwork != null
                 && !TextUtils.equals(lastArtworkSentTrackKey, currentSnapshot.getTrackKey()));
-        String artworkBase64 = shouldIncludeArtwork ? encodeArtworkToBase64(currentSnapshot.artwork) : "";
+        String artworkBase64 = shouldIncludeArtwork ? resolveArtworkPayload(currentSnapshot) : "";
         RemotePlaybackPayload payload = new RemotePlaybackPayload(
                 currentSnapshot.getTrackKey(),
                 currentSnapshot.packageName,
@@ -603,6 +607,25 @@ public final class PhoneConnectionManager {
             lastArtworkSentTrackKey = currentSnapshot.getTrackKey();
         }
         writeLine(activeSocket, BridgeCodec.encodePlayback(payload), true);
+    }
+
+    private String resolveArtworkPayload(ObservedPlaybackSnapshot snapshot) {
+        if (snapshot == null) {
+            return "";
+        }
+        String trackKey = snapshot.getTrackKey();
+        if (snapshot.artwork != null) {
+            String encodedArtwork = encodeArtworkToBase64(snapshot.artwork);
+            if (!TextUtils.isEmpty(encodedArtwork) && !TextUtils.isEmpty(trackKey)) {
+                artworkPayloadCache.put(trackKey, encodedArtwork);
+            }
+            return encodedArtwork;
+        }
+        if (TextUtils.isEmpty(trackKey)) {
+            return "";
+        }
+        String cachedPayload = artworkPayloadCache.get(trackKey);
+        return cachedPayload == null ? "" : cachedPayload;
     }
 
     private void sendSessionStatus() {

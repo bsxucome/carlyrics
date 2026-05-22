@@ -66,6 +66,20 @@ public final class ObservedPlaybackSnapshot {
                 + durationBucket(durationMs);
     }
 
+    public ObservedPlaybackSnapshot copyWithArtwork(Bitmap newArtwork) {
+        return new ObservedPlaybackSnapshot(
+                packageName,
+                title,
+                artist,
+                album,
+                durationMs,
+                positionMs,
+                lastPositionUpdateTimeMs,
+                playing,
+                newArtwork
+        );
+    }
+
     private static String safe(String value) {
         return value == null ? "" : value;
     }

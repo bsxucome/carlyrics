@@ -2,6 +2,7 @@ package com.bsxu.carlyrics.phone.companion;
 
 import android.content.ComponentName;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.MediaDescription;
@@ -9,6 +10,7 @@ import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -22,15 +24,21 @@ import android.util.Log;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsRepository;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsResult;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PhoneCompanionService extends NotificationListenerService {
 
     private static final String TAG = "PhoneCompanion";
-    private static final long ARTWORK_RETRY_DELAY_MS = 400L;
-    private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 5;
+    private static final long ARTWORK_RETRY_DELAY_MS = 350L;
+    private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 12;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<MediaController> activeControllers = new ArrayList<MediaController>();
@@ -94,6 +102,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
     private PhoneConnectionManager connectionManager;
+    private final Map<String, Bitmap> artworkCache = new ConcurrentHashMap<String, Bitmap>();
 
     private volatile MediaController currentController;
     private volatile ObservedPlaybackSnapshot currentSnapshot;
@@ -349,19 +358,8 @@ public class PhoneCompanionService extends NotificationListenerService {
                 metadata.getString(MediaMetadata.METADATA_KEY_ALBUM),
                 metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION)
         );
-        Bitmap artwork = null;
-        if (metadata != null) {
-            artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-            if (artwork == null) {
-                artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-            }
-            if (artwork == null) {
-                MediaDescription description = metadata.getDescription();
-                if (description != null) {
-                    artwork = description.getIconBitmap();
-                }
-            }
-        }
+        MediaDescription description = metadata == null ? null : metadata.getDescription();
+        Bitmap artwork = resolveArtwork(metadata, description);
 
         long durationMs = metadata == null ? 0L : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
         int state = playbackState == null ? PlaybackState.STATE_NONE : playbackState.getState();
@@ -386,6 +384,10 @@ public class PhoneCompanionService extends NotificationListenerService {
     }
 
     private void publishSnapshot(ObservedPlaybackSnapshot snapshot) {
+        snapshot = enrichSnapshotWithCachedArtwork(snapshot);
+        if (snapshot == null) {
+            return;
+        }
         currentSnapshot = snapshot;
         boolean trackChanged = !TextUtils.equals(currentTrackKey, snapshot.getTrackKey());
         currentTrackKey = snapshot.getTrackKey();
@@ -394,6 +396,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             lastLyricsAttemptElapsedMs = 0L;
             cancelArtworkRetry();
         }
+        cacheArtwork(snapshot);
         Log.i(
                 TAG,
                 "publishSnapshot track=" + snapshot.title
@@ -509,7 +512,6 @@ public class PhoneCompanionService extends NotificationListenerService {
                 "Artwork retry " + pendingArtworkRetryAttempt + "/" + ARTWORK_RETRY_MAX_ATTEMPTS
                         + " for trackKey=" + trackKey
         );
-        connectionManager.publishSnapshot(snapshot);
         if (pendingArtworkRetryAttempt >= ARTWORK_RETRY_MAX_ATTEMPTS) {
             cancelArtworkRetry();
             return;
@@ -549,6 +551,14 @@ public class PhoneCompanionService extends NotificationListenerService {
         if (largeIcon instanceof Bitmap) {
             return (Bitmap) largeIcon;
         }
+        Object largeIconBig = extras.getParcelable("android.largeIcon.big");
+        if (largeIconBig instanceof Bitmap) {
+            return (Bitmap) largeIconBig;
+        }
+        Object picture = extras.getParcelable("android.picture");
+        if (picture instanceof Bitmap) {
+            return (Bitmap) picture;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && sbn.getNotification().getLargeIcon() != null) {
             try {
                 Drawable drawable = sbn.getNotification().getLargeIcon().loadDrawable(this);
@@ -559,6 +569,121 @@ public class PhoneCompanionService extends NotificationListenerService {
             }
         }
         return null;
+    }
+
+    private Bitmap resolveArtwork(MediaMetadata metadata, MediaDescription description) {
+        Bitmap artwork = null;
+        if (metadata != null) {
+            artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (artwork == null) {
+                artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            }
+        }
+        if (artwork == null && description != null) {
+            artwork = description.getIconBitmap();
+        }
+        if (artwork != null) {
+            return artwork;
+        }
+
+        ArrayList<Uri> candidateUris = new ArrayList<Uri>();
+        if (description != null && description.getIconUri() != null) {
+            candidateUris.add(description.getIconUri());
+        }
+        if (metadata != null) {
+            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI));
+            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_ART_URI));
+            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI));
+        }
+
+        for (Uri candidateUri : candidateUris) {
+            artwork = loadArtworkFromUri(candidateUri);
+            if (artwork != null) {
+                return artwork;
+            }
+        }
+        return null;
+    }
+
+    private void addUriIfPresent(List<Uri> target, String uriString) {
+        if (target == null || TextUtils.isEmpty(uriString)) {
+            return;
+        }
+        try {
+            Uri uri = Uri.parse(uriString);
+            if (uri != null) {
+                target.add(uri);
+            }
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private Bitmap loadArtworkFromUri(Uri uri) {
+        if (uri == null) {
+            return null;
+        }
+        String scheme = uri.getScheme();
+        try {
+            if ("content".equalsIgnoreCase(scheme)
+                    || "android.resource".equalsIgnoreCase(scheme)
+                    || "file".equalsIgnoreCase(scheme)) {
+                InputStream inputStream = getContentResolver().openInputStream(uri);
+                if (inputStream == null) {
+                    return null;
+                }
+                try {
+                    return decodeArtworkStream(inputStream);
+                } finally {
+                    inputStream.close();
+                }
+            }
+            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                InputStream inputStream = new URL(uri.toString()).openStream();
+                try {
+                    return decodeArtworkStream(inputStream);
+                } finally {
+                    inputStream.close();
+                }
+            }
+        } catch (IOException ignored) {
+        } catch (SecurityException ignored) {
+        }
+        return null;
+    }
+
+    private Bitmap decodeArtworkStream(InputStream inputStream) {
+        if (inputStream == null) {
+            return null;
+        }
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inPreferredConfig = Bitmap.Config.RGB_565;
+        return BitmapFactory.decodeStream(inputStream, null, options);
+    }
+
+    private void cacheArtwork(ObservedPlaybackSnapshot snapshot) {
+        if (snapshot == null || snapshot.artwork == null) {
+            return;
+        }
+        String trackKey = snapshot.getTrackKey();
+        if (TextUtils.isEmpty(trackKey)) {
+            return;
+        }
+        artworkCache.put(trackKey, snapshot.artwork);
+    }
+
+    private ObservedPlaybackSnapshot enrichSnapshotWithCachedArtwork(ObservedPlaybackSnapshot snapshot) {
+        if (snapshot == null || snapshot.artwork != null) {
+            return snapshot;
+        }
+        String trackKey = snapshot.getTrackKey();
+        if (TextUtils.isEmpty(trackKey)) {
+            return snapshot;
+        }
+        Bitmap cachedArtwork = artworkCache.get(trackKey);
+        if (cachedArtwork == null) {
+            return snapshot;
+        }
+        return snapshot.copyWithArtwork(cachedArtwork);
     }
 
     private String firstNonEmpty(String... values) {
