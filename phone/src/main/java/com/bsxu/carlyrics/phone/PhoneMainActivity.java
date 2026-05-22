@@ -9,13 +9,13 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
-import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
-import android.app.NotificationManager;
 
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionManager;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
@@ -23,20 +23,24 @@ import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
 
 public class PhoneMainActivity extends Activity {
 
-    private static final String TAG = "PhoneMain";
     private static final String NOTIFICATION_LISTENER_SETTINGS_ACTION =
             "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
     private static final int REQUEST_BLUETOOTH_CONNECT = 501;
-    private static final int REQUEST_POST_NOTIFICATIONS = 502;
-    private static final int NOTIFICATION_STEP_NONE = 0;
-    private static final int NOTIFICATION_STEP_APP_NOTIFICATIONS = 1;
-    private static final int NOTIFICATION_STEP_LISTENER_ACCESS = 2;
+    private static final long STATUS_REFRESH_INTERVAL_MS = 1000L;
+
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable statusRefreshTicker = new Runnable() {
+        @Override
+        public void run() {
+            refreshConnectionPermissionState();
+            renderStatus();
+            uiHandler.postDelayed(this, STATUS_REFRESH_INTERVAL_MS);
+        }
+    };
 
     private TextView statusView;
     private Button notificationAccessButton;
     private Button bluetoothPermissionButton;
-    private boolean continueNotificationSetupOnResume;
-    private int lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,6 +57,7 @@ public class PhoneMainActivity extends Activity {
         ensureConnectionServiceRunning();
         refreshConnectionPermissionState();
         renderStatus();
+        startStatusRefreshTicker();
     }
 
     @Override
@@ -63,16 +68,23 @@ public class PhoneMainActivity extends Activity {
                     new ComponentName(this, PhoneCompanionService.class)
             );
         }
-        maybeContinueNotificationSetupFlow();
         ensureConnectionServiceRunning();
         refreshConnectionPermissionState();
         renderStatus();
+        startStatusRefreshTicker();
+    }
+
+    @Override
+    protected void onPause() {
+        uiHandler.removeCallbacks(statusRefreshTicker);
+        super.onPause();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        refreshConnectionPermissionState();
         renderStatus();
     }
 
@@ -82,20 +94,7 @@ public class PhoneMainActivity extends Activity {
         if (requestCode == REQUEST_BLUETOOTH_CONNECT) {
             refreshConnectionPermissionState();
             renderStatus();
-            return;
-        }
-        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
-            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            if (granted) {
-                continueNotificationSetupOnResume = true;
-                lastNotificationSetupStep = NOTIFICATION_STEP_APP_NOTIFICATIONS;
-                continueNotificationSetupFlow();
-            } else {
-                continueNotificationSetupOnResume = false;
-                lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
-            }
-            refreshConnectionPermissionState();
-            renderStatus();
+            startStatusRefreshTicker();
         }
     }
 
@@ -113,23 +112,30 @@ public class PhoneMainActivity extends Activity {
 
     private void renderStatus() {
         boolean notificationAccess = hasNotificationAccess();
-        boolean appNotificationsGranted = hasAppNotificationPermission();
         boolean bluetoothGranted = hasBluetoothPermission();
 
         if (!notificationAccess) {
             statusView.setText(R.string.status_permission_missing);
-        } else if (!appNotificationsGranted) {
-            statusView.setText(R.string.status_app_notifications_missing);
         } else if (!bluetoothGranted) {
             statusView.setText(R.string.status_bluetooth_missing);
         } else {
             String serviceStatus = PhoneConnectionService.getUiStatus();
-            statusView.setText(TextUtils.isEmpty(serviceStatus) ? getString(R.string.status_ready) : serviceStatus);
+            statusView.setText(TextUtils.isEmpty(serviceStatus)
+                    ? getString(R.string.status_ready)
+                    : serviceStatus);
         }
 
-        notificationAccessButton.setEnabled(!notificationAccess || !appNotificationsGranted);
-        bluetoothPermissionButton.setEnabled(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED);
+        notificationAccessButton.setVisibility(notificationAccess ? android.view.View.GONE : android.view.View.VISIBLE);
+        notificationAccessButton.setEnabled(!notificationAccess);
+
+        boolean needsBluetoothButton = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !bluetoothGranted;
+        bluetoothPermissionButton.setVisibility(needsBluetoothButton ? android.view.View.VISIBLE : android.view.View.GONE);
+        bluetoothPermissionButton.setEnabled(needsBluetoothButton);
+    }
+
+    private void startStatusRefreshTicker() {
+        uiHandler.removeCallbacks(statusRefreshTicker);
+        uiHandler.post(statusRefreshTicker);
     }
 
     private boolean hasNotificationAccess() {
@@ -153,21 +159,6 @@ public class PhoneMainActivity extends Activity {
         return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private boolean hasAppNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return true;
-        }
-        return checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private boolean areAppNotificationsEnabled() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            return notificationManager == null || notificationManager.areNotificationsEnabled();
-        }
-        return true;
-    }
-
     private void ensureConnectionServiceRunning() {
         startService(new Intent(this, PhoneConnectionService.class));
     }
@@ -177,53 +168,9 @@ public class PhoneMainActivity extends Activity {
     }
 
     private void beginNotificationSetupFlow() {
-        continueNotificationSetupOnResume = true;
-        lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
-        continueNotificationSetupFlow();
-    }
-
-    private void maybeContinueNotificationSetupFlow() {
-        if (!continueNotificationSetupOnResume) {
-            return;
-        }
-        boolean shouldContinue = false;
-        if (lastNotificationSetupStep == NOTIFICATION_STEP_NONE) {
-            shouldContinue = true;
-        } else if (lastNotificationSetupStep == NOTIFICATION_STEP_APP_NOTIFICATIONS) {
-            shouldContinue = hasAppNotificationPermission() && areAppNotificationsEnabled();
-        } else if (lastNotificationSetupStep == NOTIFICATION_STEP_LISTENER_ACCESS) {
-            shouldContinue = hasNotificationAccess();
-        }
-
-        if (shouldContinue) {
-            continueNotificationSetupFlow();
-        } else {
-            continueNotificationSetupOnResume = false;
-            lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
-        }
-    }
-
-    private void continueNotificationSetupFlow() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS);
-            return;
-        }
-
-        if (!areAppNotificationsEnabled()) {
-            lastNotificationSetupStep = NOTIFICATION_STEP_APP_NOTIFICATIONS;
-            openAppNotificationSettings();
-            return;
-        }
-
         if (!hasNotificationAccess()) {
-            lastNotificationSetupStep = NOTIFICATION_STEP_LISTENER_ACCESS;
             openNotificationAccessSettings();
-            return;
         }
-
-        continueNotificationSetupOnResume = false;
-        lastNotificationSetupStep = NOTIFICATION_STEP_NONE;
     }
 
     private void openNotificationAccessSettings() {
@@ -263,19 +210,4 @@ public class PhoneMainActivity extends Activity {
             return false;
         }
     }
-
-    private void openAppNotificationSettings() {
-        Intent appNotificationIntent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-        appNotificationIntent.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-        appNotificationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (tryStart(appNotificationIntent)) {
-            return;
-        }
-
-        Intent appDetailsIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-        appDetailsIntent.setData(Uri.fromParts("package", getPackageName(), null));
-        appDetailsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        tryStart(appDetailsIntent);
-    }
-
 }

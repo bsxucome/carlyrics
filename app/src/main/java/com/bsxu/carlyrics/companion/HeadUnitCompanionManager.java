@@ -38,6 +38,7 @@ import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -85,13 +86,11 @@ public final class HeadUnitCompanionManager {
     private final Runnable reconnectRunnable = new Runnable() {
         @Override
         public void run() {
-            String trustedAddress = getPrimaryTrustedDeviceAddress();
-            if (TextUtils.isEmpty(trustedAddress) || manualDisconnectRequested) {
+            ArrayList<String> reconnectCandidates = buildReconnectCandidateAddresses();
+            if (reconnectCandidates.isEmpty() || manualDisconnectRequested) {
                 return;
             }
-            ArrayList<String> addresses = new ArrayList<String>();
-            addresses.add(trustedAddress);
-            connectCandidates(addresses, string(R.string.connection_state_reconnecting_last), true);
+            connectCandidates(reconnectCandidates, string(R.string.connection_state_reconnecting_last), true, false);
         }
     };
 
@@ -117,6 +116,7 @@ public final class HeadUnitCompanionManager {
     private volatile boolean handshakeComplete;
     private volatile boolean manualDisconnectRequested;
     private volatile long pendingPingNonce;
+    private volatile boolean allowTrustedIdentityReplacement;
 
     private HeadUnitCompanionManager(Context context) {
         this.appContext = context.getApplicationContext();
@@ -246,7 +246,7 @@ public final class HeadUnitCompanionManager {
         }
         ArrayList<String> addresses = new ArrayList<String>();
         addresses.add(deviceAddress);
-        connectCandidates(addresses, string(R.string.connection_state_connecting_generic), false);
+        connectCandidates(addresses, string(R.string.connection_state_connecting_generic), false, true);
     }
 
     public void connectBondedDevicesInPriorityOrder(List<BluetoothDevice> devices) {
@@ -271,10 +271,15 @@ public final class HeadUnitCompanionManager {
             } catch (SecurityException ignored) {
             }
         }
-        connectCandidates(addresses, string(R.string.connection_state_trying_paired), false);
+        connectCandidates(addresses, string(R.string.connection_state_trying_paired), false, true);
     }
 
-    private void connectCandidates(final List<String> deviceAddresses, String startingLabel, final boolean autoReconnect) {
+    private void connectCandidates(
+            final List<String> deviceAddresses,
+            String startingLabel,
+            final boolean autoReconnect,
+            final boolean allowTrustedIdentityReplacement
+    ) {
         if (deviceAddresses == null || deviceAddresses.isEmpty()) {
             updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.no_paired_devices));
             return;
@@ -305,6 +310,7 @@ public final class HeadUnitCompanionManager {
             socket = null;
             writer = null;
             readThread = null;
+            this.allowTrustedIdentityReplacement = allowTrustedIdentityReplacement;
         }
         updateConnectionState(ConnectionState.CONNECTING, startingLabel);
 
@@ -366,12 +372,10 @@ public final class HeadUnitCompanionManager {
     }
 
     public void reconnectLastDevice() {
-        String trustedAddress = getPrimaryTrustedDeviceAddress();
-        if (!TextUtils.isEmpty(trustedAddress)) {
-            Log.d(TAG, "Reconnecting primary trusted device " + trustedAddress);
-            ArrayList<String> addresses = new ArrayList<String>();
-            addresses.add(trustedAddress);
-            connectCandidates(addresses, string(R.string.connection_state_reconnecting_last), true);
+        ArrayList<String> reconnectCandidates = buildReconnectCandidateAddresses();
+        if (!reconnectCandidates.isEmpty()) {
+            Log.d(TAG, "Reconnecting phone companion candidates=" + reconnectCandidates.size());
+            connectCandidates(reconnectCandidates, string(R.string.connection_state_reconnecting_last), true, false);
         }
     }
 
@@ -579,9 +583,13 @@ public final class HeadUnitCompanionManager {
         String trustedAppDeviceId = identityStore.getPrimaryTrustedRemoteAppDeviceId();
         if (!TextUtils.isEmpty(trustedAppDeviceId)
                 && !TextUtils.equals(trustedAppDeviceId, helloMessage.appDeviceId)) {
-            Log.w(TAG, "Rejecting remote hello due to trusted appDeviceId mismatch");
-            closeCurrentConnection(sourceSocket, false, string(R.string.connection_state_unreachable), false);
-            return;
+            if (allowTrustedIdentityReplacement) {
+                Log.w(TAG, "Replacing trusted remote appDeviceId after explicit connect selection");
+            } else {
+                Log.w(TAG, "Rejecting remote hello due to trusted appDeviceId mismatch");
+                closeCurrentConnection(sourceSocket, false, string(R.string.connection_state_unreachable), false);
+                return;
+            }
         }
 
         identityStore.rememberTrustedRemote(helloMessage, connectedDeviceAddress, connectedDeviceName);
@@ -662,6 +670,7 @@ public final class HeadUnitCompanionManager {
         lastOutboundElapsedMs = 0L;
         handshakeComplete = false;
         pendingPingNonce = 0L;
+        allowTrustedIdentityReplacement = false;
     }
 
     private void closeCurrentConnection(BluetoothSocket expectedSocket, boolean allowReconnect, String disconnectedLabel, boolean fromMaintenance) {
@@ -692,8 +701,7 @@ public final class HeadUnitCompanionManager {
     }
 
     private void scheduleReconnect() {
-        final String trustedAddress = getPrimaryTrustedDeviceAddress();
-        if (TextUtils.isEmpty(trustedAddress) || manualDisconnectRequested) {
+        if (buildReconnectCandidateAddresses().isEmpty() || manualDisconnectRequested) {
             updateConnectionState(ConnectionState.DISCONNECTED, string(R.string.connection_state_not_connected));
             return;
         }
@@ -709,6 +717,40 @@ public final class HeadUnitCompanionManager {
         int safeAttempt = Math.max(0, Math.min(attempt, 6));
         long delay = RECONNECT_INITIAL_DELAY_MS * (1L << safeAttempt);
         return Math.min(delay, RECONNECT_MAX_DELAY_MS);
+    }
+
+    private ArrayList<String> buildReconnectCandidateAddresses() {
+        LinkedHashSet<String> orderedAddresses = new LinkedHashSet<String>();
+
+        String primaryTrustedAddress = getPrimaryTrustedDeviceAddress();
+        if (!TextUtils.isEmpty(primaryTrustedAddress)) {
+            orderedAddresses.add(primaryTrustedAddress);
+        }
+
+        List<BluetoothDevice> bondedDevices = getBondedDevices();
+        if (bondedDevices != null && !bondedDevices.isEmpty()) {
+            List<BluetoothDevice> orderedDevices = new ArrayList<BluetoothDevice>(bondedDevices);
+            Collections.sort(orderedDevices, new Comparator<BluetoothDevice>() {
+                @Override
+                public int compare(BluetoothDevice first, BluetoothDevice second) {
+                    return scoreDevice(second) - scoreDevice(first);
+                }
+            });
+            for (BluetoothDevice device : orderedDevices) {
+                if (device == null) {
+                    continue;
+                }
+                try {
+                    String address = device.getAddress();
+                    if (!TextUtils.isEmpty(address)) {
+                        orderedAddresses.add(address);
+                    }
+                } catch (SecurityException ignored) {
+                }
+            }
+        }
+
+        return new ArrayList<String>(orderedAddresses);
     }
 
     private void maintainConnection() {

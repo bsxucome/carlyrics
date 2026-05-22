@@ -3,7 +3,7 @@
     <string name="app_name">Car Lyrics Phone Companion</string>
     <string name="service_label">Car Lyrics Phone Companion Service</string>
     <string name="companion_desc">This app stays on the phone, reads the current music session, fetches lyrics online, and sends metadata to the head unit over Bluetooth.</string>
-    <string name="status_idle">Status: waiting for notification access and Bluetooth permission</string>
+    <string name="status_idle">Status: starting phone companion services</string>
     <string name="status_ready">Status: ready, waiting for the head unit to connect</string>
     <string name="status_permission_missing">Status: notification access is still disabled</string>
     <string name="status_app_notifications_missing">Status: app notifications are still disabled</string>
