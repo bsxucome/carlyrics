@@ -72,6 +72,8 @@
     <string name="phone_status_notification_access_required">手机端需要开启通知访问权限。</string>
     <string name="phone_status_notification_service_starting">手机已连接，通知服务正在启动。</string>
     <string name="phone_status_media_session_unavailable">手机已连接，但媒体会话当前不可用。</string>
+    <string name="phone_status_connected_title">手机助手已连接</string>
+    <string name="phone_status_syncing_state">手机助手已连接，正在同步播放状态。</string>
     <string name="phone_status_waiting_playback">手机已连接，等待开始播放音乐。</string>
     <string name="phone_status_waiting_lyrics">手机已连接，等待歌词同步。</string>
     <string name="phone_status_ready">手机已连接并就绪。</string>

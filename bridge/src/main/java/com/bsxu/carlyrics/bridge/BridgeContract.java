@@ -19,6 +19,7 @@ public final class BridgeContract {
     public static final String ACTION_PLAY_PAUSE = "play_pause";
     public static final String ACTION_NEXT = "next";
     public static final String ACTION_PREVIOUS = "previous";
+    public static final String ACTION_RESEND_STATE = "resend_state";
     public static final String ACTION_RESEND_LYRICS = "resend_lyrics";
 
     private BridgeContract() {

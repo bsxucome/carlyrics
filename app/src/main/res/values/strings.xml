@@ -72,6 +72,8 @@
     <string name="phone_status_notification_access_required">Phone needs notification access enabled.</string>
     <string name="phone_status_notification_service_starting">Phone connected, notification service is starting.</string>
     <string name="phone_status_media_session_unavailable">Phone connected, but media session is unavailable.</string>
+    <string name="phone_status_connected_title">Phone companion connected</string>
+    <string name="phone_status_syncing_state">Phone companion connected, syncing playback state.</string>
     <string name="phone_status_waiting_playback">Phone connected, waiting for music playback.</string>
     <string name="phone_status_waiting_lyrics">Phone connected, waiting for lyrics.</string>
     <string name="phone_status_ready">Phone connected and ready.</string>

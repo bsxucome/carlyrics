@@ -135,7 +135,11 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             @Override
             public void onClick(View v) {
                 if (currentSession != null && currentSession.isConnected()) {
-                    companionManager.sendControl(BridgeContract.ACTION_RESEND_LYRICS);
+                    companionManager.sendControl(
+                            currentSession.hasTrackData()
+                                    ? BridgeContract.ACTION_RESEND_LYRICS
+                                    : BridgeContract.ACTION_RESEND_STATE
+                    );
                 } else {
                     beginConnectionFlow();
                 }
@@ -477,7 +481,9 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
 
     private void renderPlayback(HeadUnitSessionSnapshot snapshot) {
         if (snapshot == null || !snapshot.hasTrackData()) {
-            titleView.setText(R.string.default_title_companion);
+            titleView.setText(snapshot != null && snapshot.isConnected()
+                    ? R.string.phone_status_connected_title
+                    : R.string.default_title_companion);
             artistView.setText(snapshot != null && snapshot.isConnected()
                     ? buildRemoteStateHint(snapshot)
                     : getString(R.string.default_artist_companion));
@@ -626,14 +632,14 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         previousButton.setEnabled(connected);
         playPauseButton.setEnabled(connected);
         nextButton.setEnabled(connected);
-        retryLyricsButton.setEnabled(connected && hasTrack);
+        retryLyricsButton.setEnabled(connected);
         disconnectButton.setEnabled(connected);
         disconnectButton.setVisibility(connected ? View.VISIBLE : View.GONE);
 
         previousButton.setAlpha(connected ? 1f : 0.45f);
         playPauseButton.setAlpha(connected ? 1f : 0.45f);
         nextButton.setAlpha(connected ? 1f : 0.45f);
-        retryLyricsButton.setAlpha((connected && hasTrack) ? 1f : 0.55f);
+        retryLyricsButton.setAlpha(connected ? 1f : 0.55f);
         disconnectButton.setAlpha(connected ? 1f : 0.55f);
     }
 
@@ -706,8 +712,14 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     }
 
     private String buildRemoteStateHint(HeadUnitSessionSnapshot snapshot) {
-        if (snapshot == null || snapshot.sessionStatusPayload == null) {
+        if (snapshot == null) {
             return getString(R.string.default_artist_companion);
+        }
+        if (!snapshot.isConnected()) {
+            return getString(R.string.default_artist_companion);
+        }
+        if (snapshot.sessionStatusPayload == null) {
+            return getString(R.string.phone_status_syncing_state);
         }
         RemoteSessionStatusPayload statusPayload = snapshot.sessionStatusPayload;
         if (!statusPayload.notificationAccessGranted) {
@@ -733,7 +745,7 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             return getString(R.string.waiting_for_phone_companion);
         }
         if (snapshot.sessionStatusPayload == null) {
-            return getString(R.string.lyrics_sync_waiting);
+            return getString(R.string.phone_status_syncing_state);
         }
         RemoteSessionStatusPayload statusPayload = snapshot.sessionStatusPayload;
         if (!statusPayload.notificationAccessGranted) {

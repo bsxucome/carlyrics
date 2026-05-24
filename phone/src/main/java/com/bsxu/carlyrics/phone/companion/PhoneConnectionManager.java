@@ -290,6 +290,12 @@ public final class PhoneConnectionManager {
         sendSessionStatus();
     }
 
+    public void sendFullStateReplay() {
+        sendSessionStatus();
+        sendPlaybackSnapshot(true);
+        sendLyricsPayload();
+    }
+
     private void startBluetoothServer() {
         if (!hasBluetoothPermission()) {
             updateUiStatus(appContext.getString(R.string.status_bluetooth_missing_runtime));
@@ -556,14 +562,20 @@ public final class PhoneConnectionManager {
                         + " protocol=" + helloMessage.protocolVersion
                         + " remoteAppDeviceId=" + helloMessage.appDeviceId
         );
-        sendSessionStatus();
-        sendPlaybackSnapshot(true);
-        sendLyricsPayload();
+        sendFullStateReplay();
     }
 
     private void handleControlMessage(ControlMessage message) {
+        if (message == null) {
+            return;
+        }
+        if (BridgeContract.ACTION_RESEND_STATE.equals(message.action)) {
+            Log.d(TAG, "Received full state replay request from head unit");
+            sendFullStateReplay();
+            return;
+        }
         ControlDelegate delegate = controlDelegate;
-        if (delegate == null || message == null) {
+        if (delegate == null) {
             return;
         }
         if (BridgeContract.ACTION_PLAY_PAUSE.equals(message.action)) {

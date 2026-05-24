@@ -53,6 +53,9 @@ public final class HeadUnitCompanionManager {
     private static final long RECONNECT_INITIAL_DELAY_MS = 1200L;
     private static final long RECONNECT_MAX_DELAY_MS = 15000L;
     private static final long CONNECTION_MAINTENANCE_TICK_MS = 1000L;
+    private static final long INITIAL_STATE_REPLAY_GRACE_MS = 2500L;
+    private static final long LYRICS_STATE_REPLAY_GRACE_MS = 1500L;
+    private static final long STATE_REPLAY_REQUEST_INTERVAL_MS = 3000L;
 
     public interface Listener {
         void onSessionUpdated(HeadUnitSessionSnapshot snapshot);
@@ -110,12 +113,14 @@ public final class HeadUnitCompanionManager {
     private volatile String connectedDeviceAddress = "";
     private volatile String connectedDeviceName = "";
     private volatile long handshakeStartedElapsedMs;
+    private volatile long handshakeCompletedElapsedMs;
     private volatile long lastInboundElapsedMs;
     private volatile long lastOutboundElapsedMs;
     private volatile int reconnectAttempt;
     private volatile boolean handshakeComplete;
     private volatile boolean manualDisconnectRequested;
     private volatile long pendingPingNonce;
+    private volatile long lastStateReplayRequestElapsedMs;
     private volatile boolean allowTrustedIdentityReplacement;
 
     private HeadUnitCompanionManager(Context context) {
@@ -422,9 +427,11 @@ public final class HeadUnitCompanionManager {
             connectedDeviceAddress = deviceAddress == null ? "" : deviceAddress;
             connectedDeviceName = deviceName == null ? "" : deviceName;
             handshakeStartedElapsedMs = SystemClock.elapsedRealtime();
+            handshakeCompletedElapsedMs = 0L;
             lastInboundElapsedMs = handshakeStartedElapsedMs;
             lastOutboundElapsedMs = 0L;
             pendingPingNonce = 0L;
+            lastStateReplayRequestElapsedMs = 0L;
             handshakeComplete = false;
             sessionStatusPayload = null;
             playbackPayload = null;
@@ -597,8 +604,10 @@ public final class HeadUnitCompanionManager {
         synchronized (sessionLock) {
             handshakeComplete = true;
             handshakeStartedElapsedMs = 0L;
+            handshakeCompletedElapsedMs = SystemClock.elapsedRealtime();
             lastInboundElapsedMs = SystemClock.elapsedRealtime();
             reconnectAttempt = 0;
+            lastStateReplayRequestElapsedMs = 0L;
         }
         mainHandler.removeCallbacks(reconnectRunnable);
         updateConnectionState(ConnectionState.CONNECTED, string(R.string.connection_state_connected_to, connectedDeviceName));
@@ -666,10 +675,12 @@ public final class HeadUnitCompanionManager {
         connectedDeviceAddress = "";
         connectedDeviceName = "";
         handshakeStartedElapsedMs = 0L;
+        handshakeCompletedElapsedMs = 0L;
         lastInboundElapsedMs = 0L;
         lastOutboundElapsedMs = 0L;
         handshakeComplete = false;
         pendingPingNonce = 0L;
+        lastStateReplayRequestElapsedMs = 0L;
         allowTrustedIdentityReplacement = false;
     }
 
@@ -771,10 +782,45 @@ public final class HeadUnitCompanionManager {
             closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
             return;
         }
+        maybeRequestStateReplay(activeSocket, now);
         if (now - lastOutboundElapsedMs >= KEEPALIVE_INTERVAL_MS) {
             pendingPingNonce = now;
             writeLine(activeSocket, BridgeCodec.encodePing(new PingMessage(pendingPingNonce)), false);
         }
+    }
+
+    private void maybeRequestStateReplay(BluetoothSocket activeSocket, long now) {
+        if (activeSocket == null || !handshakeComplete) {
+            return;
+        }
+        boolean awaitingInitialSnapshot = playbackPayload == null
+                && sessionStatusPayload == null
+                && handshakeCompletedElapsedMs > 0L
+                && now - handshakeCompletedElapsedMs >= INITIAL_STATE_REPLAY_GRACE_MS;
+        boolean statusClaimsPlaybackButSnapshotMissing = playbackPayload == null
+                && sessionStatusPayload != null
+                && sessionStatusPayload.playbackAvailable;
+        boolean playbackMissing = awaitingInitialSnapshot || statusClaimsPlaybackButSnapshotMissing;
+        boolean lyricsMissing = playbackPayload != null
+                && lyricsPayload == null
+                && sessionStatusPayload != null
+                && sessionStatusPayload.lyricsAvailable
+                && playbackReceivedElapsedMs > 0L
+                && now - playbackReceivedElapsedMs >= LYRICS_STATE_REPLAY_GRACE_MS;
+        if (!playbackMissing && !lyricsMissing) {
+            return;
+        }
+        if (lastStateReplayRequestElapsedMs > 0L
+                && now - lastStateReplayRequestElapsedMs < STATE_REPLAY_REQUEST_INTERVAL_MS) {
+            return;
+        }
+        lastStateReplayRequestElapsedMs = now;
+        Log.d(
+                TAG,
+                "Requesting full state replay playbackMissing=" + playbackMissing
+                        + " lyricsMissing=" + lyricsMissing
+        );
+        sendControl(BridgeContract.ACTION_RESEND_STATE);
     }
 
     private void noteInbound() {

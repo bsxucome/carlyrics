@@ -160,7 +160,12 @@ public class PhoneMainActivity extends Activity {
     }
 
     private void ensureConnectionServiceRunning() {
-        startService(new Intent(this, PhoneConnectionService.class));
+        Intent serviceIntent = new Intent(this, PhoneConnectionService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+            return;
+        }
+        startService(serviceIntent);
     }
 
     private void refreshConnectionPermissionState() {
