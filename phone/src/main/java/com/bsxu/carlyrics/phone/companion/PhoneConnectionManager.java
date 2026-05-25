@@ -160,6 +160,18 @@ public final class PhoneConnectionManager {
         return uiStatus;
     }
 
+    public RemoteSessionStatusPayload getCurrentSessionStatus() {
+        return currentSessionStatus;
+    }
+
+    public boolean isNotificationAccessGranted() {
+        return currentSessionStatus.notificationAccessGranted;
+    }
+
+    public boolean isNotificationListenerActive() {
+        return currentSessionStatus.notificationListenerActive;
+    }
+
     public void start() {
         shouldRun = true;
         mainHandler.removeCallbacks(heartbeatSender);

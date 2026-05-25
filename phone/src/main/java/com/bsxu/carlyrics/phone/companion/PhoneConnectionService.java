@@ -5,17 +5,38 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.service.notification.NotificationListenerService;
+import android.text.TextUtils;
+import android.util.Log;
 
 import com.bsxu.carlyrics.phone.PhoneMainActivity;
 import com.bsxu.carlyrics.phone.R;
 
 public class PhoneConnectionService extends Service {
 
+    private static final String TAG = "PhoneConnService";
     private static final String CHANNEL_ID = "phone_connection_service";
     private static final int NOTIFICATION_ID = 2001;
+    private static final long LISTENER_WATCHDOG_INTERVAL_MS = 5000L;
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable notificationListenerWatchdog = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                ensureNotificationListenerBound();
+            } finally {
+                mainHandler.postDelayed(this, LISTENER_WATCHDOG_INTERVAL_MS);
+            }
+        }
+    };
 
     public static String getUiStatus() {
         return PhoneConnectionManager.getUiStatus();
@@ -26,17 +47,20 @@ public class PhoneConnectionService extends Service {
         super.onCreate();
         startInForeground();
         PhoneConnectionManager.getInstance(this).start();
+        startNotificationListenerWatchdog();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startInForeground();
         PhoneConnectionManager.getInstance(this).start();
+        startNotificationListenerWatchdog();
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        mainHandler.removeCallbacks(notificationListenerWatchdog);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } else {
@@ -49,6 +73,45 @@ public class PhoneConnectionService extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null;
+    }
+
+    private void startNotificationListenerWatchdog() {
+        mainHandler.removeCallbacks(notificationListenerWatchdog);
+        mainHandler.post(notificationListenerWatchdog);
+    }
+
+    private void ensureNotificationListenerBound() {
+        PhoneConnectionManager connectionManager = PhoneConnectionManager.getInstance(this);
+        boolean notificationAccessConfigured = hasNotificationAccessConfigured();
+        connectionManager.setNotificationAccessGranted(notificationAccessConfigured);
+        if (!notificationAccessConfigured || connectionManager.isNotificationListenerActive()) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return;
+        }
+        try {
+            NotificationListenerService.requestRebind(
+                    new ComponentName(this, PhoneCompanionService.class)
+            );
+            Log.i(TAG, "Requested notification listener rebind from foreground connection service");
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Failed to request notification listener rebind", error);
+        }
+    }
+
+    private boolean hasNotificationAccessConfigured() {
+        String enabledListeners = Settings.Secure.getString(
+                getContentResolver(),
+                "enabled_notification_listeners"
+        );
+        if (TextUtils.isEmpty(enabledListeners)) {
+            return false;
+        }
+        ComponentName componentName = new ComponentName(this, PhoneCompanionService.class);
+        return enabledListeners.contains(componentName.flattenToString())
+                || enabledListeners.contains(componentName.flattenToShortString())
+                || enabledListeners.contains(getPackageName());
     }
 
     private void startInForeground() {
