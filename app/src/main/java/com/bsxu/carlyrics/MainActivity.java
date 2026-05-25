@@ -110,6 +110,15 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         openPermissionButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                if (currentSession != null && currentSession.connectionState == ConnectionState.CONNECTING) {
+                    companionManager.disconnect();
+                    Toast.makeText(
+                            MainActivity.this,
+                            R.string.phone_companion_connecting_cancelled,
+                            Toast.LENGTH_SHORT
+                    ).show();
+                    return;
+                }
                 beginConnectionFlow();
             }
         });
@@ -466,8 +475,8 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
 
         if (snapshot.connectionState == ConnectionState.CONNECTING) {
             permissionDescriptionView.setText(snapshot.connectionLabel);
-            openPermissionButton.setText(R.string.connecting_phone_companion);
-            openPermissionButton.setEnabled(false);
+            openPermissionButton.setText(R.string.cancel_connecting_phone_companion);
+            openPermissionButton.setEnabled(true);
         } else {
             permissionDescriptionView.setText(
                     TextUtils.isEmpty(snapshot.connectionLabel)

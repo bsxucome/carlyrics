@@ -24,8 +24,10 @@
     <string name="connection_desc_idle">Use the paired phone companion app to stream metadata, artwork, and lyrics to the head unit.</string>
     <string name="connect_phone_companion">Connect phone</string>
     <string name="connecting_phone_companion">Connecting...</string>
+    <string name="cancel_connecting_phone_companion">Cancel</string>
     <string name="disconnect_phone_companion">Disconnect</string>
     <string name="phone_companion_disconnected">Phone companion disconnected</string>
+    <string name="phone_companion_connecting_cancelled">Phone companion connection cancelled</string>
     <string name="connecting_to_phone">Connecting to %1$s...</string>
     <string name="select_phone_companion">Select paired phone</string>
     <string name="paired_device_item">%1$s\n%2$s</string>

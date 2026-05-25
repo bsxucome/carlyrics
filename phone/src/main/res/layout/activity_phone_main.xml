@@ -38,21 +38,47 @@
             android:textColor="@android:color/white"
             android:textSize="14sp" />
 
-        <Button
-            android:id="@+id/notificationAccessButton"
+        <LinearLayout
+            android:id="@+id/actionButtonsContainer"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="@string/open_notification_access"
-            android:textAllCaps="false" />
+            android:orientation="vertical">
 
-        <Button
-            android:id="@+id/bluetoothPermissionButton"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="10dp"
-            android:text="@string/grant_bluetooth_permission"
-            android:textAllCaps="false" />
+            <TextView
+                android:id="@+id/actionHintView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:background="#18334C"
+                android:padding="12dp"
+                android:textColor="#DFF4FF"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/notificationAccessButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="@string/open_notification_access"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/bluetoothPermissionButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:text="@string/grant_bluetooth_permission"
+                android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/resetTrustedHeadUnitButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:text="@string/reset_trusted_head_unit"
+                android:textAllCaps="false" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"

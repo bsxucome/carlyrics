@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Handler;
@@ -22,11 +23,15 @@ import com.bsxu.carlyrics.phone.R;
 public class PhoneConnectionService extends Service {
 
     private static final String TAG = "PhoneConnService";
+    public static final String ACTION_FORCE_RECOVER_LISTENER =
+            "com.bsxu.carlyrics.phone.action.FORCE_RECOVER_LISTENER";
     private static final String CHANNEL_ID = "phone_connection_service";
     private static final int NOTIFICATION_ID = 2001;
     private static final long LISTENER_WATCHDOG_INTERVAL_MS = 5000L;
+    private static final int LISTENER_REBIND_REPAIR_THRESHOLD = 3;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private int notificationListenerRecoveryAttempts;
     private final Runnable notificationListenerWatchdog = new Runnable() {
         @Override
         public void run() {
@@ -54,6 +59,9 @@ public class PhoneConnectionService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startInForeground();
         PhoneConnectionManager.getInstance(this).start();
+        if (intent != null && ACTION_FORCE_RECOVER_LISTENER.equals(intent.getAction())) {
+            forceNotificationListenerRepair();
+        }
         startNotificationListenerWatchdog();
         return START_STICKY;
     }
@@ -84,12 +92,26 @@ public class PhoneConnectionService extends Service {
         PhoneConnectionManager connectionManager = PhoneConnectionManager.getInstance(this);
         boolean notificationAccessConfigured = hasNotificationAccessConfigured();
         connectionManager.setNotificationAccessGranted(notificationAccessConfigured);
-        if (!notificationAccessConfigured || connectionManager.isNotificationListenerActive()) {
+        if (!notificationAccessConfigured) {
+            notificationListenerRecoveryAttempts = 0;
+            return;
+        }
+        if (connectionManager.isNotificationListenerActive()) {
+            notificationListenerRecoveryAttempts = 0;
             return;
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return;
         }
+        requestNotificationListenerRebind();
+        notificationListenerRecoveryAttempts++;
+        if (notificationListenerRecoveryAttempts >= LISTENER_REBIND_REPAIR_THRESHOLD) {
+            forceNotificationListenerRepair();
+            notificationListenerRecoveryAttempts = 0;
+        }
+    }
+
+    private void requestNotificationListenerRebind() {
         try {
             NotificationListenerService.requestRebind(
                     new ComponentName(this, PhoneCompanionService.class)
@@ -98,6 +120,27 @@ public class PhoneConnectionService extends Service {
         } catch (RuntimeException error) {
             Log.w(TAG, "Failed to request notification listener rebind", error);
         }
+    }
+
+    private void forceNotificationListenerRepair() {
+        ComponentName componentName = new ComponentName(this, PhoneCompanionService.class);
+        try {
+            PackageManager packageManager = getPackageManager();
+            packageManager.setComponentEnabledSetting(
+                    componentName,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+            );
+            packageManager.setComponentEnabledSetting(
+                    componentName,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP
+            );
+            Log.i(TAG, "Bounced PhoneCompanionService component state to repair notification listener");
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Failed to bounce PhoneCompanionService component state", error);
+        }
+        requestNotificationListenerRebind();
     }
 
     private boolean hasNotificationAccessConfigured() {

@@ -24,8 +24,10 @@
     <string name="connection_desc_idle">请使用已配对的手机助手应用，把歌曲信息、封面和歌词通过蓝牙同步到车机。</string>
     <string name="connect_phone_companion">连接手机</string>
     <string name="connecting_phone_companion">连接中…</string>
+    <string name="cancel_connecting_phone_companion">取消连接</string>
     <string name="disconnect_phone_companion">断开连接</string>
     <string name="phone_companion_disconnected">已断开手机助手连接</string>
+    <string name="phone_companion_connecting_cancelled">已取消手机助手连接</string>
     <string name="connecting_to_phone">正在连接 %1$s…</string>
     <string name="select_phone_companion">选择已配对手机</string>
     <string name="paired_device_item">%1$s\n%2$s</string>

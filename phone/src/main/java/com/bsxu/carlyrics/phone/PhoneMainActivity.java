@@ -2,6 +2,7 @@ package com.bsxu.carlyrics.phone;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Intent;
@@ -15,16 +16,24 @@ import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionManager;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
 import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
 
+import java.util.ArrayList;
+
 public class PhoneMainActivity extends Activity {
 
     private static final String NOTIFICATION_LISTENER_SETTINGS_ACTION =
             "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
+    private static final int ACTION_PRIMARY_TINT = 0xFF2D92E8;
+    private static final int ACTION_SECONDARY_TINT = 0xFF263648;
+    private static final int ACTION_PRIMARY_TEXT = 0xFFFFFFFF;
+    private static final int ACTION_SECONDARY_TEXT = 0xFFE2F5FF;
     private static final int REQUEST_BLUETOOTH_CONNECT = 501;
     private static final long STATUS_REFRESH_INTERVAL_MS = 1000L;
 
@@ -39,8 +48,11 @@ public class PhoneMainActivity extends Activity {
     };
 
     private TextView statusView;
+    private TextView actionHintView;
+    private LinearLayout actionButtonsContainer;
     private Button notificationAccessButton;
     private Button bluetoothPermissionButton;
+    private Button resetTrustedHeadUnitButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,11 +60,15 @@ public class PhoneMainActivity extends Activity {
         setContentView(R.layout.activity_phone_main);
 
         statusView = (TextView) findViewById(R.id.statusView);
+        actionHintView = (TextView) findViewById(R.id.actionHintView);
+        actionButtonsContainer = (LinearLayout) findViewById(R.id.actionButtonsContainer);
         notificationAccessButton = (Button) findViewById(R.id.notificationAccessButton);
         bluetoothPermissionButton = (Button) findViewById(R.id.bluetoothPermissionButton);
+        resetTrustedHeadUnitButton = (Button) findViewById(R.id.resetTrustedHeadUnitButton);
 
-        notificationAccessButton.setOnClickListener(v -> beginNotificationSetupFlow());
+        notificationAccessButton.setOnClickListener(v -> handleNotificationButtonClick());
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
+        resetTrustedHeadUnitButton.setOnClickListener(v -> resetTrustedHeadUnit());
 
         ensureConnectionServiceRunning();
         refreshConnectionPermissionState();
@@ -111,13 +127,20 @@ public class PhoneMainActivity extends Activity {
     }
 
     private void renderStatus() {
+        PhoneConnectionManager connectionManager = PhoneConnectionManager.getInstance(this);
         boolean notificationAccess = hasNotificationAccess();
         boolean bluetoothGranted = hasBluetoothPermission();
+        boolean listenerActive = connectionManager.isNotificationListenerActive();
+        boolean trustedMismatch = connectionManager.isTrustedHeadUnitMismatchPending();
 
         if (!notificationAccess) {
             statusView.setText(R.string.status_permission_missing);
+        } else if (trustedMismatch) {
+            statusView.setText(R.string.status_trusted_head_unit_mismatch);
         } else if (!bluetoothGranted) {
             statusView.setText(R.string.status_bluetooth_missing);
+        } else if (!listenerActive) {
+            statusView.setText(R.string.status_notification_listener_inactive);
         } else {
             String serviceStatus = PhoneConnectionService.getUiStatus();
             statusView.setText(TextUtils.isEmpty(serviceStatus)
@@ -125,12 +148,32 @@ public class PhoneMainActivity extends Activity {
                     : serviceStatus);
         }
 
-        notificationAccessButton.setVisibility(notificationAccess ? android.view.View.GONE : android.view.View.VISIBLE);
-        notificationAccessButton.setEnabled(!notificationAccess);
+        boolean showNotificationButton = !notificationAccess || !listenerActive;
+        notificationAccessButton.setVisibility(showNotificationButton
+                ? android.view.View.VISIBLE
+                : android.view.View.GONE);
+        notificationAccessButton.setEnabled(showNotificationButton);
+        notificationAccessButton.setText(notificationAccess
+                ? R.string.repair_notification_listener
+                : R.string.open_notification_access);
 
         boolean needsBluetoothButton = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !bluetoothGranted;
         bluetoothPermissionButton.setVisibility(needsBluetoothButton ? android.view.View.VISIBLE : android.view.View.GONE);
         bluetoothPermissionButton.setEnabled(needsBluetoothButton);
+
+        boolean hasTrustedHeadUnit = PhoneConnectionManager.getInstance(this).hasTrustedHeadUnit();
+        resetTrustedHeadUnitButton.setVisibility(hasTrustedHeadUnit
+                ? android.view.View.VISIBLE
+                : android.view.View.GONE);
+        resetTrustedHeadUnitButton.setEnabled(hasTrustedHeadUnit);
+
+        updateRecommendedAction(
+                notificationAccess,
+                listenerActive,
+                bluetoothGranted,
+                hasTrustedHeadUnit,
+                trustedMismatch
+        );
     }
 
     private void startStatusRefreshTicker() {
@@ -172,10 +215,100 @@ public class PhoneMainActivity extends Activity {
         PhoneConnectionManager.getInstance(this).setNotificationAccessGranted(hasNotificationAccess());
     }
 
+    private void resetTrustedHeadUnit() {
+        PhoneConnectionManager.getInstance(this).resetTrustedHeadUnit();
+        renderStatus();
+        Toast.makeText(this, R.string.trusted_head_unit_reset, Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateRecommendedAction(
+            boolean notificationAccess,
+            boolean listenerActive,
+            boolean bluetoothGranted,
+            boolean hasTrustedHeadUnit,
+            boolean trustedMismatch
+    ) {
+        Button primaryButton = null;
+        int hintResId = 0;
+
+        if (trustedMismatch && hasTrustedHeadUnit) {
+            primaryButton = resetTrustedHeadUnitButton;
+            hintResId = R.string.recommended_reset_trusted_head_unit;
+        } else if (!notificationAccess) {
+            primaryButton = notificationAccessButton;
+            hintResId = R.string.recommended_open_notification_access;
+        } else if (!listenerActive) {
+            primaryButton = notificationAccessButton;
+            hintResId = R.string.recommended_repair_notification_listener;
+        } else if (!bluetoothGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            primaryButton = bluetoothPermissionButton;
+            hintResId = R.string.recommended_grant_bluetooth_permission;
+        }
+
+        ArrayList<Button> orderedButtons = new ArrayList<Button>();
+        if (primaryButton != null && primaryButton.getVisibility() == android.view.View.VISIBLE) {
+            orderedButtons.add(primaryButton);
+        }
+        addButtonIfVisible(orderedButtons, notificationAccessButton, primaryButton);
+        addButtonIfVisible(orderedButtons, bluetoothPermissionButton, primaryButton);
+        addButtonIfVisible(orderedButtons, resetTrustedHeadUnitButton, primaryButton);
+
+        actionButtonsContainer.removeAllViews();
+        if (hintResId != 0) {
+            actionHintView.setText(hintResId);
+            actionHintView.setVisibility(android.view.View.VISIBLE);
+            actionButtonsContainer.addView(actionHintView);
+        } else {
+            actionHintView.setVisibility(android.view.View.GONE);
+        }
+
+        for (Button button : orderedButtons) {
+            styleActionButton(button, button == primaryButton);
+            actionButtonsContainer.addView(button);
+        }
+    }
+
+    private void addButtonIfVisible(ArrayList<Button> orderedButtons, Button button, Button primaryButton) {
+        if (button == null || button == primaryButton || button.getVisibility() != android.view.View.VISIBLE) {
+            return;
+        }
+        orderedButtons.add(button);
+    }
+
+    private void styleActionButton(Button button, boolean primary) {
+        if (button == null) {
+            return;
+        }
+        button.setBackgroundTintList(ColorStateList.valueOf(primary ? ACTION_PRIMARY_TINT : ACTION_SECONDARY_TINT));
+        button.setTextColor(primary ? ACTION_PRIMARY_TEXT : ACTION_SECONDARY_TEXT);
+        button.setAlpha(primary ? 1f : 0.92f);
+    }
+
     private void beginNotificationSetupFlow() {
         if (!hasNotificationAccess()) {
             openNotificationAccessSettings();
         }
+    }
+
+    private void handleNotificationButtonClick() {
+        if (!hasNotificationAccess()) {
+            beginNotificationSetupFlow();
+            return;
+        }
+        Intent repairIntent = new Intent(this, PhoneConnectionService.class);
+        repairIntent.setAction(PhoneConnectionService.ACTION_FORCE_RECOVER_LISTENER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(repairIntent);
+        } else {
+            startService(repairIntent);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            NotificationListenerService.requestRebind(
+                    new ComponentName(this, PhoneCompanionService.class)
+            );
+        }
+        Toast.makeText(this, R.string.repair_notification_listener_started, Toast.LENGTH_SHORT).show();
+        renderStatus();
     }
 
     private void openNotificationAccessSettings() {

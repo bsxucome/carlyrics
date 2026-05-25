@@ -49,4 +49,15 @@ final class PhoneIdentityStore {
     boolean hasTrustedRemoteAppDeviceId() {
         return !TextUtils.isEmpty(getTrustedRemoteAppDeviceId());
     }
+
+    String getTrustedRemoteDeviceName() {
+        return sharedPreferences.getString(KEY_TRUSTED_REMOTE_DEVICE_NAME, "");
+    }
+
+    void clearTrustedRemote() {
+        sharedPreferences.edit()
+                .remove(KEY_TRUSTED_REMOTE_APP_DEVICE_ID)
+                .remove(KEY_TRUSTED_REMOTE_DEVICE_NAME)
+                .apply();
+    }
 }

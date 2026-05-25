@@ -130,6 +130,8 @@ public final class PhoneConnectionManager {
     private volatile String lastArtworkSentTrackKey = "";
     private volatile String lastLyricsSentTrackKey = "";
     private volatile long lastLyricsSentElapsedMs;
+    private volatile boolean allowTrustedIdentityReplacement;
+    private volatile boolean trustedHeadUnitMismatchPending;
     private final Map<String, String> artworkPayloadCache;
     private volatile RemoteSessionStatusPayload currentSessionStatus =
             new RemoteSessionStatusPayload(false, false, false, false, false);
@@ -170,6 +172,25 @@ public final class PhoneConnectionManager {
 
     public boolean isNotificationListenerActive() {
         return currentSessionStatus.notificationListenerActive;
+    }
+
+    public boolean hasTrustedHeadUnit() {
+        return identityStore.hasTrustedRemoteAppDeviceId();
+    }
+
+    public String getTrustedHeadUnitName() {
+        return identityStore.getTrustedRemoteDeviceName();
+    }
+
+    public boolean isTrustedHeadUnitMismatchPending() {
+        return trustedHeadUnitMismatchPending;
+    }
+
+    public void resetTrustedHeadUnit() {
+        identityStore.clearTrustedRemote();
+        allowTrustedIdentityReplacement = true;
+        trustedHeadUnitMismatchPending = false;
+        updateUiStatus(appContext.getString(R.string.status_head_unit_trust_reset));
     }
 
     public void start() {
@@ -553,12 +574,20 @@ public final class PhoneConnectionManager {
         String trustedRemoteAppDeviceId = identityStore.getTrustedRemoteAppDeviceId();
         if (!TextUtils.isEmpty(trustedRemoteAppDeviceId)
                 && !TextUtils.equals(trustedRemoteAppDeviceId, helloMessage.appDeviceId)) {
-            Log.w(TAG, "Rejecting remote hello due to trusted appDeviceId mismatch");
-            closeCurrentClientConnection(sourceSocket, true);
-            return;
+            if (allowTrustedIdentityReplacement) {
+                Log.w(TAG, "Replacing trusted head unit appDeviceId after explicit reset");
+            } else {
+                Log.w(TAG, "Rejecting remote hello due to trusted appDeviceId mismatch");
+                trustedHeadUnitMismatchPending = true;
+                updateUiStatus(appContext.getString(R.string.status_trusted_head_unit_mismatch));
+                closeCurrentClientConnection(sourceSocket, false);
+                return;
+            }
         }
 
         identityStore.rememberTrustedRemote(helloMessage);
+        allowTrustedIdentityReplacement = false;
+        trustedHeadUnitMismatchPending = false;
         synchronized (sessionLock) {
             handshakeComplete = true;
             handshakeStartedElapsedMs = 0L;
@@ -812,6 +841,7 @@ public final class PhoneConnectionManager {
         lastInboundElapsedMs = 0L;
         lastOutboundElapsedMs = 0L;
         pendingPingNonce = 0L;
+        allowTrustedIdentityReplacement = false;
     }
 
     private void closeServerSocket(BluetoothServerSocket activeServerSocket) {
