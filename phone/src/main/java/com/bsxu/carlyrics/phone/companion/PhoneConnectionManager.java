@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
@@ -49,6 +50,7 @@ public final class PhoneConnectionManager {
     private static final long SERVER_RESTART_INITIAL_DELAY_MS = 1200L;
     private static final long SERVER_RESTART_MAX_DELAY_MS = 15000L;
     private static final long CONNECTION_MAINTENANCE_TICK_MS = 1000L;
+    private static final long LISTENER_REPAIR_REQUEST_MIN_INTERVAL_MS = 8000L;
 
     public interface ControlDelegate {
         void onPlayPauseRequested();
@@ -132,6 +134,7 @@ public final class PhoneConnectionManager {
     private volatile long lastLyricsSentElapsedMs;
     private volatile boolean allowTrustedIdentityReplacement;
     private volatile boolean trustedHeadUnitMismatchPending;
+    private volatile long lastListenerRepairRequestElapsedMs;
     private final Map<String, String> artworkPayloadCache;
     private volatile RemoteSessionStatusPayload currentSessionStatus =
             new RemoteSessionStatusPayload(false, false, false, false, false);
@@ -320,6 +323,11 @@ public final class PhoneConnectionManager {
                 playbackAvailable,
                 lyricsAvailable
         );
+        if (notificationListenerActive) {
+            lastListenerRepairRequestElapsedMs = 0L;
+        } else if (notificationAccessGranted && (clientSocket != null || handshakeComplete)) {
+            requestNotificationListenerRepairIfNeeded("listener inactive while companion connection is active");
+        }
         sendSessionStatus();
     }
 
@@ -469,6 +477,8 @@ public final class PhoneConnectionManager {
             }
         }
 
+        requestNotificationListenerRepairIfNeeded("head unit connected while listener inactive");
+
         if (!sendHello(acceptedSocket)) {
             Log.e(TAG, "Failed to send local hello to " + connectedClientName);
             closeCurrentClientConnection(acceptedSocket, true);
@@ -604,6 +614,32 @@ public final class PhoneConnectionManager {
                         + " remoteAppDeviceId=" + helloMessage.appDeviceId
         );
         sendFullStateReplay();
+    }
+
+    private void requestNotificationListenerRepairIfNeeded(String reason) {
+        if (!shouldRun
+                || !currentSessionStatus.notificationAccessGranted
+                || currentSessionStatus.notificationListenerActive) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (lastListenerRepairRequestElapsedMs > 0L
+                && now - lastListenerRepairRequestElapsedMs < LISTENER_REPAIR_REQUEST_MIN_INTERVAL_MS) {
+            return;
+        }
+        lastListenerRepairRequestElapsedMs = now;
+        Intent repairIntent = new Intent(appContext, PhoneConnectionService.class);
+        repairIntent.setAction(PhoneConnectionService.ACTION_FORCE_RECOVER_LISTENER);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(repairIntent);
+            } else {
+                appContext.startService(repairIntent);
+            }
+            Log.i(TAG, "Requested notification listener repair because " + reason);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Failed to request notification listener repair because " + reason, error);
+        }
     }
 
     private void handleControlMessage(ControlMessage message) {
