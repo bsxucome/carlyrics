@@ -8,8 +8,8 @@ android {
         applicationId "com.bsxu.carlyrics.phone"
         minSdk 21
         targetSdk 34
-        versionCode 13
-        versionName "0.2.11"
+        versionCode 14
+        versionName "0.2.12"
     }
 
     buildTypes {

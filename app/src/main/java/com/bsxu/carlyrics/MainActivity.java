@@ -594,35 +594,52 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
 
     private void renderLyricStage() {
         if (currentLyricsLines.isEmpty()) {
-            setLyricStageTexts("", "", getString(R.string.lyrics_waiting_remote), "", "");
-            return;
-        }
-
-        if (!currentLyricsSynced) {
             setLyricStageTexts(
                     "",
                     "",
-                    getLineText(0),
-                    getLineText(1),
-                    getLineText(2)
+                    hasCurrentLyricsPayload()
+                            ? getString(R.string.lyrics_no_displayable_lines)
+                            : getString(R.string.lyrics_waiting_remote),
+                    "",
+                    ""
             );
             return;
         }
 
-        int anchorIndex = currentLyricIndex >= 0 ? currentLyricIndex : 0;
+        if (!currentLyricsSynced) {
+            int firstIndex = findNextDisplayLyricIndex(0);
+            int secondIndex = firstIndex >= 0 ? findNextDisplayLyricIndex(firstIndex + 1) : -1;
+            int thirdIndex = secondIndex >= 0 ? findNextDisplayLyricIndex(secondIndex + 1) : -1;
+            setLyricStageTexts(
+                    "",
+                    "",
+                    firstIndex >= 0 ? getLineText(firstIndex) : getString(R.string.lyrics_no_displayable_lines),
+                    secondIndex >= 0 ? getLineText(secondIndex) : "",
+                    thirdIndex >= 0 ? getLineText(thirdIndex) : ""
+            );
+            return;
+        }
+
+        int anchorIndex = currentLyricIndex >= 0 ? currentLyricIndex : findNextDisplayLyricIndex(0);
+        if (anchorIndex < 0) {
+            setLyricStageTexts("", "", getString(R.string.lyrics_no_displayable_lines), "", "");
+            return;
+        }
+        int nextIndex = findNextDisplayLyricIndex(anchorIndex + 1);
+        int followingIndex = nextIndex >= 0 ? findNextDisplayLyricIndex(nextIndex + 1) : -1;
         setLyricStageTexts(
                 "",
                 "",
                 getLineText(anchorIndex),
-                getLineText(anchorIndex + 1),
-                getLineText(anchorIndex + 2)
+                nextIndex >= 0 ? getLineText(nextIndex) : "",
+                followingIndex >= 0 ? getLineText(followingIndex) : ""
         );
     }
 
     private void setLyricStageTexts(String top, String upper, String current, String lower, String bottom) {
         lyricLineTopView.setText(emptyFallback(top, ""));
         lyricLineUpperView.setText(emptyFallback(upper, ""));
-        lyricLineCurrentView.setText(emptyFallback(current, getString(R.string.lyrics_waiting_remote)));
+        lyricLineCurrentView.setText(emptyFallback(current, ""));
         lyricLineLowerView.setText(emptyFallback(lower, ""));
         lyricLineBottomView.setText(emptyFallback(bottom, ""));
     }
@@ -632,6 +649,12 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
             return "";
         }
         return currentLyricsLines.get(index).getText();
+    }
+
+    private boolean hasCurrentLyricsPayload() {
+        return currentSession != null
+                && currentSession.lyricsPayload != null
+                && TextUtils.equals(currentSession.lyricsPayload.trackKey, currentTrackKey);
     }
 
     private void updateActionButtons(HeadUnitSessionSnapshot snapshot) {
@@ -787,12 +810,28 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         int activeIndex = -1;
         for (int i = 0; i < lines.size(); i++) {
             if (lines.get(i).getTimeMs() <= positionMs) {
-                activeIndex = i;
+                if (hasDisplayText(lines.get(i))) {
+                    activeIndex = i;
+                }
             } else {
                 break;
             }
         }
-        return activeIndex;
+        return activeIndex >= 0 ? activeIndex : findNextDisplayLyricIndex(0);
+    }
+
+    private int findNextDisplayLyricIndex(int startIndex) {
+        int safeStartIndex = Math.max(0, startIndex);
+        for (int i = safeStartIndex; i < currentLyricsLines.size(); i++) {
+            if (hasDisplayText(currentLyricsLines.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean hasDisplayText(LyricLine line) {
+        return line != null && !TextUtils.isEmpty(line.getText().trim());
     }
 
     private String getTrackKey(RemotePlaybackPayload payload) {

@@ -16,6 +16,7 @@
     <string name="next">Next</string>
     <string name="retry_lyrics">Refresh sync</string>
     <string name="lyrics_waiting_remote">Waiting for lyrics from the phone companion...</string>
+    <string name="lyrics_no_displayable_lines">No displayable lyrics for this track</string>
     <string name="lyrics_status_prefix">Lyrics status: </string>
     <string name="debug_shown">Debug info shown</string>
     <string name="debug_hidden">Debug info hidden</string>
