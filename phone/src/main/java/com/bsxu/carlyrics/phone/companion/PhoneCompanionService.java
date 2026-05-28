@@ -39,6 +39,8 @@ public class PhoneCompanionService extends NotificationListenerService {
     private static final String TAG = "PhoneCompanion";
     private static final long ARTWORK_RETRY_DELAY_MS = 350L;
     private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 12;
+    private static final long LYRICS_RETRY_DELAY_MS = 2500L;
+    private static final int LYRICS_RETRY_MAX_ATTEMPTS = 8;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<MediaController> activeControllers = new ArrayList<MediaController>();
@@ -58,6 +60,13 @@ public class PhoneCompanionService extends NotificationListenerService {
         @Override
         public void run() {
             performArtworkRetry();
+        }
+    };
+
+    private final Runnable lyricsRetryRunnable = new Runnable() {
+        @Override
+        public void run() {
+            performLyricsRetry();
         }
     };
 
@@ -111,6 +120,8 @@ public class PhoneCompanionService extends NotificationListenerService {
     private volatile long lastLyricsAttemptElapsedMs;
     private volatile String pendingArtworkTrackKey = "";
     private volatile int pendingArtworkRetryAttempt;
+    private volatile String pendingLyricsTrackKey = "";
+    private volatile int pendingLyricsRetryAttempt;
 
     @Override
     public void onCreate() {
@@ -126,6 +137,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     @Override
     public void onDestroy() {
         cancelArtworkRetry();
+        cancelLyricsRetry();
         connectionManager.clearControlDelegate(controlDelegate);
         detachMediaSessionListener();
         super.onDestroy();
@@ -153,6 +165,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         currentLyricsResult = null;
         currentTrackKey = "";
         cancelArtworkRetry();
+        cancelLyricsRetry();
         connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
         connectionManager.setNotificationListenerActive(false);
         connectionManager.setMediaState(false, false, false);
@@ -242,6 +255,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             currentLyricsResult = null;
             currentTrackKey = "";
             cancelArtworkRetry();
+            cancelLyricsRetry();
             connectionManager.setMediaState(false, false, false);
             return;
         }
@@ -251,6 +265,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             currentSnapshot = null;
             currentLyricsResult = null;
             cancelArtworkRetry();
+            cancelLyricsRetry();
             connectionManager.setMediaState(true, false, false);
             return;
         }
@@ -395,6 +410,7 @@ public class PhoneCompanionService extends NotificationListenerService {
             currentLyricsResult = null;
             lastLyricsAttemptElapsedMs = 0L;
             cancelArtworkRetry();
+            cancelLyricsRetry();
         }
         cacheArtwork(snapshot);
         Log.i(
@@ -439,7 +455,9 @@ public class PhoneCompanionService extends NotificationListenerService {
                             currentSnapshot != null && currentSnapshot.hasTrackData(),
                             false
                     );
+                    scheduleLyricsRetry(expectedTrackKey);
                 } else {
+                    cancelLyricsRetry();
                     Log.i(
                             TAG,
                             "Lyrics loaded source=" + result.sourceLabel
@@ -484,6 +502,56 @@ public class PhoneCompanionService extends NotificationListenerService {
         pendingArtworkTrackKey = "";
         pendingArtworkRetryAttempt = 0;
         mainHandler.removeCallbacks(artworkRetryRunnable);
+    }
+
+    private void scheduleLyricsRetry(String trackKey) {
+        if (TextUtils.isEmpty(trackKey)) {
+            return;
+        }
+        if (!TextUtils.equals(pendingLyricsTrackKey, trackKey)) {
+            pendingLyricsTrackKey = trackKey;
+            pendingLyricsRetryAttempt = 0;
+        }
+        if (pendingLyricsRetryAttempt >= LYRICS_RETRY_MAX_ATTEMPTS) {
+            return;
+        }
+        mainHandler.removeCallbacks(lyricsRetryRunnable);
+        mainHandler.postDelayed(lyricsRetryRunnable, LYRICS_RETRY_DELAY_MS);
+    }
+
+    private void cancelLyricsRetry() {
+        pendingLyricsTrackKey = "";
+        pendingLyricsRetryAttempt = 0;
+        mainHandler.removeCallbacks(lyricsRetryRunnable);
+    }
+
+    private void performLyricsRetry() {
+        ObservedPlaybackSnapshot snapshot = currentSnapshot;
+        if (snapshot == null || !snapshot.hasTrackData()) {
+            cancelLyricsRetry();
+            return;
+        }
+        if (currentLyricsResult != null) {
+            cancelLyricsRetry();
+            return;
+        }
+        String trackKey = snapshot.getTrackKey();
+        if (!TextUtils.equals(trackKey, pendingLyricsTrackKey)) {
+            cancelLyricsRetry();
+            return;
+        }
+        if (pendingLyricsRetryAttempt >= LYRICS_RETRY_MAX_ATTEMPTS) {
+            cancelLyricsRetry();
+            return;
+        }
+
+        pendingLyricsRetryAttempt++;
+        Log.d(
+                TAG,
+                "Lyrics retry " + pendingLyricsRetryAttempt + "/" + LYRICS_RETRY_MAX_ATTEMPTS
+                        + " for trackKey=" + trackKey
+        );
+        requestLyricsForCurrentTrack(true);
     }
 
     private void performArtworkRetry() {
