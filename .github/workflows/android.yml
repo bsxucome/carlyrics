@@ -10,13 +10,21 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -28,5 +36,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and test
-        run: ./gradlew testDebugUnitTest assembleDebug
+      - name: Test and lint
+        run: ./gradlew testDebugUnitTest lintDebug
+
+      - name: Build debug and release APKs
+        run: ./gradlew assembleDebug assembleRelease
