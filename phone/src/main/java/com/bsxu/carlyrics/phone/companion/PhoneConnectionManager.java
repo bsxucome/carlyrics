@@ -22,6 +22,7 @@ import com.bsxu.carlyrics.phone.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ConnectionMaintenancePolicy;
+import com.bsxu.carlyrics.bridge.ConnectionSessionTracker;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
@@ -70,6 +71,7 @@ public final class PhoneConnectionManager {
     private final PhoneIdentityStore identityStore;
     private final Object writeLock;
     private final Object sessionLock;
+    private final ConnectionSessionTracker sessionTracker;
 
     private final Runnable heartbeatSender = new Runnable() {
         @Override
@@ -119,10 +121,6 @@ public final class PhoneConnectionManager {
     private volatile Thread readThread;
     private volatile int connectionGeneration;
     private volatile int serverRestartAttempt;
-    private volatile boolean handshakeComplete;
-    private volatile long handshakeStartedElapsedMs;
-    private volatile long lastInboundElapsedMs;
-    private volatile long lastOutboundElapsedMs;
     private volatile long pendingPingNonce;
     private volatile ControlDelegate controlDelegate;
     private volatile ObservedPlaybackSnapshot currentSnapshot;
@@ -146,6 +144,7 @@ public final class PhoneConnectionManager {
         this.identityStore = new PhoneIdentityStore(appContext);
         this.writeLock = new Object();
         this.sessionLock = new Object();
+        this.sessionTracker = new ConnectionSessionTracker();
         this.artworkPayloadCache =
                 new BoundedLruCache<String, String>(MAX_ARTWORK_PAYLOAD_CACHE_ENTRIES);
         updateUiStatus(appContext.getString(R.string.status_idle));
@@ -198,6 +197,9 @@ public final class PhoneConnectionManager {
     }
 
     public void start() {
+        if (shouldRun) {
+            return;
+        }
         shouldRun = true;
         mainHandler.removeCallbacks(heartbeatSender);
         mainHandler.removeCallbacks(connectionMaintenanceRunnable);
@@ -208,6 +210,9 @@ public final class PhoneConnectionManager {
     }
 
     public void stop() {
+        if (!shouldRun) {
+            return;
+        }
         shouldRun = false;
         serverRestartAttempt = 0;
         mainHandler.removeCallbacks(heartbeatSender);
@@ -326,7 +331,8 @@ public final class PhoneConnectionManager {
         );
         if (notificationListenerActive) {
             lastListenerRepairRequestElapsedMs = 0L;
-        } else if (notificationAccessGranted && (clientSocket != null || handshakeComplete)) {
+        } else if (notificationAccessGranted
+                && (clientSocket != null || sessionTracker.isHandshakeComplete())) {
             requestNotificationListenerRepairIfNeeded("listener inactive while companion connection is active");
         }
         sendSessionStatus();
@@ -461,11 +467,8 @@ public final class PhoneConnectionManager {
             clearClientSessionLocked();
             clientSocket = acceptedSocket;
             connectedClientName = safeName(readRemoteDeviceName(acceptedSocket));
-            handshakeStartedElapsedMs = SystemClock.elapsedRealtime();
-            lastInboundElapsedMs = handshakeStartedElapsedMs;
-            lastOutboundElapsedMs = 0L;
+            sessionTracker.begin(SystemClock.elapsedRealtime());
             pendingPingNonce = 0L;
-            handshakeComplete = false;
             sessionGeneration = connectionGeneration;
             try {
                 writer = new BufferedWriter(new OutputStreamWriter(acceptedSocket.getOutputStream(), "UTF-8"));
@@ -554,7 +557,7 @@ public final class PhoneConnectionManager {
                 handleRemoteHello(sourceSocket, message.helloMessage);
                 return;
             }
-            if (!handshakeComplete) {
+            if (!sessionTracker.isHandshakeComplete()) {
                 Log.w(TAG, "Rejecting pre-handshake message type=" + message.type);
                 closeCurrentClientConnection(sourceSocket, true);
                 return;
@@ -611,10 +614,7 @@ public final class PhoneConnectionManager {
         allowTrustedIdentityReplacement = false;
         trustedHeadUnitMismatchPending = false;
         synchronized (sessionLock) {
-            handshakeComplete = true;
-            handshakeStartedElapsedMs = 0L;
-            lastInboundElapsedMs = SystemClock.elapsedRealtime();
-            lastOutboundElapsedMs = 0L;
+            sessionTracker.completeHandshake(SystemClock.elapsedRealtime());
         }
         serverRestartAttempt = 0;
         updateUiStatus(appContext.getString(R.string.status_connected_to, connectedClientName));
@@ -686,7 +686,8 @@ public final class PhoneConnectionManager {
 
     private void sendPlaybackSnapshot(boolean includeArtwork) {
         BluetoothSocket activeSocket = clientSocket;
-        if (activeSocket == null || !handshakeComplete || currentSnapshot == null || !currentSnapshot.hasTrackData()) {
+        if (activeSocket == null || !sessionTracker.isHandshakeComplete()
+                || currentSnapshot == null || !currentSnapshot.hasTrackData()) {
             return;
         }
         boolean shouldIncludeArtwork = includeArtwork
@@ -731,7 +732,8 @@ public final class PhoneConnectionManager {
 
     private void sendSessionStatus() {
         BluetoothSocket activeSocket = clientSocket;
-        if (activeSocket == null || !handshakeComplete || currentSessionStatus == null) {
+        if (activeSocket == null || !sessionTracker.isHandshakeComplete()
+                || currentSessionStatus == null) {
             return;
         }
         Log.d(
@@ -747,7 +749,8 @@ public final class PhoneConnectionManager {
 
     private void sendLyricsPayload() {
         BluetoothSocket activeSocket = clientSocket;
-        if (activeSocket == null || !handshakeComplete || currentSnapshot == null || currentLyricsResult == null) {
+        if (activeSocket == null || !sessionTracker.isHandshakeComplete()
+                || currentSnapshot == null || currentLyricsResult == null) {
             return;
         }
         RemoteLyricsPayload payload = new RemoteLyricsPayload(
@@ -762,7 +765,8 @@ public final class PhoneConnectionManager {
     }
 
     private void maybeResendLyrics() {
-        if (currentLyricsResult == null || clientSocket == null || !handshakeComplete) {
+        if (currentLyricsResult == null || clientSocket == null
+                || !sessionTracker.isHandshakeComplete()) {
             return;
         }
         long now = SystemClock.elapsedRealtime();
@@ -778,13 +782,7 @@ public final class PhoneConnectionManager {
             return;
         }
         long now = SystemClock.elapsedRealtime();
-        ConnectionMaintenancePolicy.Action action = ConnectionMaintenancePolicy.evaluate(
-                handshakeComplete,
-                handshakeStartedElapsedMs,
-                lastInboundElapsedMs,
-                lastOutboundElapsedMs,
-                now
-        );
+        ConnectionMaintenancePolicy.Action action = sessionTracker.evaluate(now);
         if (action == ConnectionMaintenancePolicy.Action.HANDSHAKE_TIMEOUT) {
             Log.w(TAG, "Handshake timed out for " + connectedClientName);
             closeCurrentClientConnection(activeSocket, true);
@@ -802,11 +800,11 @@ public final class PhoneConnectionManager {
     }
 
     private void noteInbound() {
-        lastInboundElapsedMs = SystemClock.elapsedRealtime();
+        sessionTracker.noteInbound(SystemClock.elapsedRealtime());
     }
 
     private void noteOutbound() {
-        lastOutboundElapsedMs = SystemClock.elapsedRealtime();
+        sessionTracker.noteOutbound(SystemClock.elapsedRealtime());
     }
 
     private boolean writeLine(BluetoothSocket targetSocket, String line, boolean requireHandshake) {
@@ -818,7 +816,7 @@ public final class PhoneConnectionManager {
             Log.w(TAG, "Rejecting oversized outbound bridge message: " + line.length());
             return false;
         }
-        if (requireHandshake && !handshakeComplete) {
+        if (requireHandshake && !sessionTracker.isHandshakeComplete()) {
             return false;
         }
         synchronized (writeLock) {
@@ -945,10 +943,7 @@ public final class PhoneConnectionManager {
         writer = null;
         readThread = null;
         connectedClientName = "";
-        handshakeComplete = false;
-        handshakeStartedElapsedMs = 0L;
-        lastInboundElapsedMs = 0L;
-        lastOutboundElapsedMs = 0L;
+        sessionTracker.reset();
         pendingPingNonce = 0L;
         allowTrustedIdentityReplacement = false;
     }

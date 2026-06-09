@@ -22,6 +22,7 @@ import com.bsxu.carlyrics.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ConnectionMaintenancePolicy;
+import com.bsxu.carlyrics.bridge.ConnectionSessionTracker;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
@@ -74,6 +75,7 @@ public final class HeadUnitCompanionManager {
     private final Object sessionLock;
     private final SharedPreferences sharedPreferences;
     private final HeadUnitIdentityStore identityStore;
+    private final ConnectionSessionTracker sessionTracker;
 
     private final Runnable connectionMaintenanceRunnable = new Runnable() {
         @Override
@@ -112,12 +114,7 @@ public final class HeadUnitCompanionManager {
     private volatile long playbackReceivedElapsedMs;
     private volatile String connectedDeviceAddress = "";
     private volatile String connectedDeviceName = "";
-    private volatile long handshakeStartedElapsedMs;
-    private volatile long handshakeCompletedElapsedMs;
-    private volatile long lastInboundElapsedMs;
-    private volatile long lastOutboundElapsedMs;
     private volatile int reconnectAttempt;
-    private volatile boolean handshakeComplete;
     private volatile boolean manualDisconnectRequested;
     private volatile long pendingPingNonce;
     private volatile long lastStateReplayRequestElapsedMs;
@@ -131,6 +128,7 @@ public final class HeadUnitCompanionManager {
         this.sessionLock = new Object();
         this.sharedPreferences = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.identityStore = new HeadUnitIdentityStore(appContext);
+        this.sessionTracker = new ConnectionSessionTracker();
         this.connectionState = ConnectionState.DISCONNECTED;
         this.connectionLabel = string(R.string.connection_state_not_connected);
         this.mainHandler.post(connectionMaintenanceRunnable);
@@ -411,7 +409,7 @@ public final class HeadUnitCompanionManager {
             return;
         }
         BluetoothSocket activeSocket = socket;
-        if (activeSocket == null || !handshakeComplete) {
+        if (activeSocket == null || !sessionTracker.isHandshakeComplete()) {
             return;
         }
         writeLine(activeSocket, BridgeCodec.encodeControl(new ControlMessage(action)), true);
@@ -426,13 +424,9 @@ public final class HeadUnitCompanionManager {
             socket = localSocket;
             connectedDeviceAddress = deviceAddress == null ? "" : deviceAddress;
             connectedDeviceName = deviceName == null ? "" : deviceName;
-            handshakeStartedElapsedMs = SystemClock.elapsedRealtime();
-            handshakeCompletedElapsedMs = 0L;
-            lastInboundElapsedMs = handshakeStartedElapsedMs;
-            lastOutboundElapsedMs = 0L;
+            sessionTracker.begin(SystemClock.elapsedRealtime());
             pendingPingNonce = 0L;
             lastStateReplayRequestElapsedMs = 0L;
-            handshakeComplete = false;
             sessionStatusPayload = null;
             playbackPayload = null;
             lyricsPayload = null;
@@ -513,7 +507,7 @@ public final class HeadUnitCompanionManager {
                 handleRemoteHello(sourceSocket, decodedMessage.helloMessage);
                 return;
             }
-            if (!handshakeComplete) {
+            if (!sessionTracker.isHandshakeComplete()) {
                 Log.w(TAG, "Rejecting pre-handshake message type=" + decodedMessage.type);
                 closeCurrentConnection(sourceSocket, false, string(R.string.connection_state_unreachable), false);
                 return;
@@ -619,10 +613,7 @@ public final class HeadUnitCompanionManager {
         identityStore.rememberTrustedRemote(helloMessage, connectedDeviceAddress, connectedDeviceName);
         rememberLastSuccessfulDevice(connectedDeviceAddress, connectedDeviceName);
         synchronized (sessionLock) {
-            handshakeComplete = true;
-            handshakeStartedElapsedMs = 0L;
-            handshakeCompletedElapsedMs = SystemClock.elapsedRealtime();
-            lastInboundElapsedMs = SystemClock.elapsedRealtime();
+            sessionTracker.completeHandshake(SystemClock.elapsedRealtime());
             reconnectAttempt = 0;
             lastStateReplayRequestElapsedMs = 0L;
         }
@@ -700,11 +691,7 @@ public final class HeadUnitCompanionManager {
         playbackReceivedElapsedMs = 0L;
         connectedDeviceAddress = "";
         connectedDeviceName = "";
-        handshakeStartedElapsedMs = 0L;
-        handshakeCompletedElapsedMs = 0L;
-        lastInboundElapsedMs = 0L;
-        lastOutboundElapsedMs = 0L;
-        handshakeComplete = false;
+        sessionTracker.reset();
         pendingPingNonce = 0L;
         lastStateReplayRequestElapsedMs = 0L;
         allowTrustedIdentityReplacement = false;
@@ -798,13 +785,7 @@ public final class HeadUnitCompanionManager {
             return;
         }
         long now = SystemClock.elapsedRealtime();
-        ConnectionMaintenancePolicy.Action action = ConnectionMaintenancePolicy.evaluate(
-                handshakeComplete,
-                handshakeStartedElapsedMs,
-                lastInboundElapsedMs,
-                lastOutboundElapsedMs,
-                now
-        );
+        ConnectionMaintenancePolicy.Action action = sessionTracker.evaluate(now);
         if (action == ConnectionMaintenancePolicy.Action.HANDSHAKE_TIMEOUT) {
             Log.w(TAG, "Handshake timed out");
             closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
@@ -815,7 +796,7 @@ public final class HeadUnitCompanionManager {
             closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
             return;
         }
-        if (!handshakeComplete) {
+        if (!sessionTracker.isHandshakeComplete()) {
             return;
         }
         maybeRequestStateReplay(activeSocket, now);
@@ -826,13 +807,14 @@ public final class HeadUnitCompanionManager {
     }
 
     private void maybeRequestStateReplay(BluetoothSocket activeSocket, long now) {
-        if (activeSocket == null || !handshakeComplete) {
+        if (activeSocket == null || !sessionTracker.isHandshakeComplete()) {
             return;
         }
         boolean awaitingInitialSnapshot = playbackPayload == null
                 && sessionStatusPayload == null
-                && handshakeCompletedElapsedMs > 0L
-                && now - handshakeCompletedElapsedMs >= INITIAL_STATE_REPLAY_GRACE_MS;
+                && sessionTracker.getHandshakeCompletedElapsedMs() > 0L
+                && now - sessionTracker.getHandshakeCompletedElapsedMs()
+                >= INITIAL_STATE_REPLAY_GRACE_MS;
         boolean statusClaimsPlaybackButSnapshotMissing = playbackPayload == null
                 && sessionStatusPayload != null
                 && sessionStatusPayload.playbackAvailable;
@@ -860,11 +842,11 @@ public final class HeadUnitCompanionManager {
     }
 
     private void noteInbound() {
-        lastInboundElapsedMs = SystemClock.elapsedRealtime();
+        sessionTracker.noteInbound(SystemClock.elapsedRealtime());
     }
 
     private void noteOutbound() {
-        lastOutboundElapsedMs = SystemClock.elapsedRealtime();
+        sessionTracker.noteOutbound(SystemClock.elapsedRealtime());
     }
 
     private boolean writeLine(BluetoothSocket targetSocket, String line, boolean requireHandshake) {
@@ -876,7 +858,7 @@ public final class HeadUnitCompanionManager {
             Log.w(TAG, "Rejecting oversized outbound bridge message: " + line.length());
             return false;
         }
-        if (requireHandshake && !handshakeComplete) {
+        if (requireHandshake && !sessionTracker.isHandshakeComplete()) {
             return false;
         }
         synchronized (writeLock) {
