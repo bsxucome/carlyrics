@@ -4,7 +4,11 @@ public final class BridgeContract {
 
     public static final String APP_UUID = "26cc8509-2f07-4f09-8c13-4c0d6035d391";
     public static final int PROTOCOL_VERSION = 2;
+    public static final int MIN_SUPPORTED_PROTOCOL_VERSION = 2;
+    public static final int MAX_SUPPORTED_PROTOCOL_VERSION = 2;
     public static final int MAX_MESSAGE_CHARS = 512 * 1024;
+    public static final int MAX_ARTWORK_BASE64_CHARS = 256 * 1024;
+    public static final int MAX_ARTWORK_BYTES = 192 * 1024;
 
     public static final String TYPE_HELLO = "hello";
     public static final String TYPE_SESSION_STATUS = "session_status";
@@ -22,6 +26,11 @@ public final class BridgeContract {
     public static final String ACTION_PREVIOUS = "previous";
     public static final String ACTION_RESEND_STATE = "resend_state";
     public static final String ACTION_RESEND_LYRICS = "resend_lyrics";
+
+    public static boolean isProtocolSupported(int protocolVersion) {
+        return protocolVersion >= MIN_SUPPORTED_PROTOCOL_VERSION
+                && protocolVersion <= MAX_SUPPORTED_PROTOCOL_VERSION;
+    }
 
     private BridgeContract() {
     }

@@ -48,6 +48,7 @@
     <string name="connection_state_trying_paired">Trying paired phone connections...</string>
     <string name="connection_state_trying_device">Trying %1$s (%2$d/%3$d)...</string>
     <string name="connection_state_unreachable">Unable to reach any paired phone companion</string>
+    <string name="connection_state_protocol_mismatch">Phone companion %1$s uses protocol %2$d; this app supports %3$d-%4$d. Update both apps together.</string>
     <string name="connection_state_reconnecting_last">Reconnecting to the last phone companion...</string>
     <string name="connection_state_connected_to">Connected to %1$s</string>
     <string name="generic_phone_device">Phone</string>

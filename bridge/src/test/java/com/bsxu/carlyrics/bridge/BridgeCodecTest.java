@@ -54,6 +54,33 @@ public class BridgeCodecTest {
     }
 
     @Test
+    public void playbackDropsOversizedArtworkWithoutLosingMetadata() throws JSONException {
+        StringBuilder oversizedArtwork =
+                new StringBuilder(BridgeContract.MAX_ARTWORK_BASE64_CHARS + 1);
+        for (int i = 0; i <= BridgeContract.MAX_ARTWORK_BASE64_CHARS; i++) {
+            oversizedArtwork.append('A');
+        }
+        RemotePlaybackPayload source = new RemotePlaybackPayload(
+                "track",
+                "player.package",
+                "Title",
+                "Artist",
+                "Album",
+                180_000L,
+                42_000L,
+                true,
+                oversizedArtwork.toString()
+        );
+
+        RemotePlaybackPayload decoded =
+                BridgeCodec.decode(BridgeCodec.encodePlayback(source)).playbackPayload;
+
+        assertNotNull(decoded);
+        assertEquals("Title", decoded.title);
+        assertEquals("", decoded.artworkBase64);
+    }
+
+    @Test
     public void lyricsRoundTripPreservesLines() throws JSONException {
         RemoteLyricsPayload source = new RemoteLyricsPayload(
                 "track",
@@ -109,5 +136,16 @@ public class BridgeCodecTest {
         }
 
         BridgeCodec.decode(message.toString());
+    }
+
+    @Test
+    public void protocolCompatibilityUsesDeclaredRange() {
+        assertFalse(BridgeContract.isProtocolSupported(
+                BridgeContract.MIN_SUPPORTED_PROTOCOL_VERSION - 1
+        ));
+        assertTrue(BridgeContract.isProtocolSupported(BridgeContract.PROTOCOL_VERSION));
+        assertFalse(BridgeContract.isProtocolSupported(
+                BridgeContract.MAX_SUPPORTED_PROTOCOL_VERSION + 1
+        ));
     }
 }

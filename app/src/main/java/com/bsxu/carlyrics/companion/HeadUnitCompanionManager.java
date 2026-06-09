@@ -580,9 +580,20 @@ public final class HeadUnitCompanionManager {
         if (helloMessage == null || !isCurrentSocket(sourceSocket)) {
             return;
         }
-        if (helloMessage.protocolVersion != BridgeContract.PROTOCOL_VERSION) {
+        if (!BridgeContract.isProtocolSupported(helloMessage.protocolVersion)) {
             Log.w(TAG, "Rejecting remote hello due to protocol mismatch: " + helloMessage.protocolVersion);
-            closeCurrentConnection(sourceSocket, false, string(R.string.connection_state_unreachable), false);
+            closeCurrentConnection(
+                    sourceSocket,
+                    false,
+                    string(
+                            R.string.connection_state_protocol_mismatch,
+                            helloMessage.versionName,
+                            helloMessage.protocolVersion,
+                            BridgeContract.MIN_SUPPORTED_PROTOCOL_VERSION,
+                            BridgeContract.MAX_SUPPORTED_PROTOCOL_VERSION
+                    ),
+                    false
+            );
             return;
         }
         if (!TextUtils.equals(helloMessage.role, BridgeContract.ROLE_PHONE)) {
@@ -636,10 +647,19 @@ public final class HeadUnitCompanionManager {
         if (TextUtils.isEmpty(artworkBase64)) {
             return fallback;
         }
+        if (artworkBase64.length() > BridgeContract.MAX_ARTWORK_BASE64_CHARS) {
+            Log.w(TAG, "Ignoring oversized artwork payload: " + artworkBase64.length());
+            return fallback;
+        }
         try {
             byte[] bytes = Base64.decode(artworkBase64, Base64.DEFAULT);
+            if (bytes.length > BridgeContract.MAX_ARTWORK_BYTES) {
+                Log.w(TAG, "Ignoring oversized decoded artwork: " + bytes.length);
+                return fallback;
+            }
             return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-        } catch (IllegalArgumentException ignored) {
+        } catch (IllegalArgumentException error) {
+            Log.w(TAG, "Ignoring invalid artwork payload", error);
             return fallback;
         }
     }

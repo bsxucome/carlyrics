@@ -572,9 +572,16 @@ public final class PhoneConnectionManager {
         if (helloMessage == null || !isCurrentClientSocket(sourceSocket)) {
             return;
         }
-        if (helloMessage.protocolVersion != BridgeContract.PROTOCOL_VERSION) {
+        if (!BridgeContract.isProtocolSupported(helloMessage.protocolVersion)) {
             Log.w(TAG, "Rejecting remote hello due to protocol mismatch: " + helloMessage.protocolVersion);
-            closeCurrentClientConnection(sourceSocket, true);
+            updateUiStatus(appContext.getString(
+                    R.string.status_protocol_mismatch,
+                    helloMessage.versionName,
+                    helloMessage.protocolVersion,
+                    BridgeContract.MIN_SUPPORTED_PROTOCOL_VERSION,
+                    BridgeContract.MAX_SUPPORTED_PROTOCOL_VERSION
+            ));
+            closeCurrentClientConnection(sourceSocket, false);
             return;
         }
         if (!TextUtils.equals(helloMessage.role, BridgeContract.ROLE_HEADUNIT)) {
@@ -831,19 +838,53 @@ public final class PhoneConnectionManager {
         if (artwork == null) {
             return "";
         }
-        Bitmap scaled = Bitmap.createScaledBitmap(
-                artwork,
-                Math.max(1, artwork.getWidth() > artwork.getHeight()
-                        ? 320
-                        : Math.round(320f * artwork.getWidth() / artwork.getHeight())),
-                Math.max(1, artwork.getHeight() >= artwork.getWidth()
-                        ? 320
-                        : Math.round(320f * artwork.getHeight() / artwork.getWidth())),
-                true
-        );
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        scaled.compress(CompressFormat.JPEG, 82, outputStream);
-        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP);
+        String encoded = encodeArtworkVariant(artwork, 320, 82);
+        if (!TextUtils.isEmpty(encoded)) {
+            return encoded;
+        }
+        return encodeArtworkVariant(artwork, 240, 68);
+    }
+
+    private String encodeArtworkVariant(Bitmap artwork, int maxDimension, int quality) {
+        Bitmap scaled = null;
+        try {
+            int width = Math.max(1, artwork.getWidth());
+            int height = Math.max(1, artwork.getHeight());
+            int scaledWidth = width >= height
+                    ? maxDimension
+                    : Math.max(1, Math.round(maxDimension * width / (float) height));
+            int scaledHeight = height >= width
+                    ? maxDimension
+                    : Math.max(1, Math.round(maxDimension * height / (float) width));
+            scaled = Bitmap.createScaledBitmap(
+                    artwork,
+                    scaledWidth,
+                    scaledHeight,
+                    true
+            );
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            if (!scaled.compress(CompressFormat.JPEG, quality, outputStream)) {
+                return "";
+            }
+            byte[] bytes = outputStream.toByteArray();
+            if (bytes.length > BridgeContract.MAX_ARTWORK_BYTES) {
+                Log.w(TAG, "Artwork variant exceeds byte limit: " + bytes.length);
+                return "";
+            }
+            String encoded = Base64.encodeToString(bytes, Base64.NO_WRAP);
+            if (encoded.length() > BridgeContract.MAX_ARTWORK_BASE64_CHARS) {
+                Log.w(TAG, "Artwork variant exceeds encoded limit: " + encoded.length());
+                return "";
+            }
+            return encoded;
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Failed to encode artwork", error);
+            return "";
+        } finally {
+            if (scaled != null && scaled != artwork && !scaled.isRecycled()) {
+                scaled.recycle();
+            }
+        }
     }
 
     private boolean hasBluetoothPermission() {

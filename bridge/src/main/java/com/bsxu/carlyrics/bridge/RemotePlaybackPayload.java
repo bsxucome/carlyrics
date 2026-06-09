@@ -31,7 +31,15 @@ public final class RemotePlaybackPayload {
         this.durationMs = Math.max(durationMs, 0L);
         this.positionMs = Math.max(positionMs, 0L);
         this.playing = playing;
-        this.artworkBase64 = artworkBase64 == null ? "" : artworkBase64;
+        this.artworkBase64 = sanitizeArtworkPayload(artworkBase64);
+    }
+
+    private static String sanitizeArtworkPayload(String artworkBase64) {
+        if (artworkBase64 == null
+                || artworkBase64.length() > BridgeContract.MAX_ARTWORK_BASE64_CHARS) {
+            return "";
+        }
+        return artworkBase64;
     }
 }
 

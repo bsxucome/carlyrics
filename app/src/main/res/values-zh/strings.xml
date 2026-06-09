@@ -48,6 +48,7 @@
     <string name="connection_state_trying_paired">正在尝试已配对手机连接…</string>
     <string name="connection_state_trying_device">正在尝试 %1$s（%2$d/%3$d）…</string>
     <string name="connection_state_unreachable">无法连接任何已配对的手机助手</string>
+    <string name="connection_state_protocol_mismatch">手机助手 %1$s 使用协议 %2$d，当前车机端支持 %3$d-%4$d。请同时更新两端应用。</string>
     <string name="connection_state_reconnecting_last">正在重连上次连接的手机助手…</string>
     <string name="connection_state_connected_to">已连接到 %1$s</string>
     <string name="generic_phone_device">手机</string>

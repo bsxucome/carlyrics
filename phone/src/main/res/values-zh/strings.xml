@@ -18,6 +18,7 @@
     <string name="status_connected_to">状态：已连接到 %1$s</string>
     <string name="status_waiting_reconnect">状态：等待车机重新连接</string>
     <string name="status_trusted_head_unit_mismatch">状态：当前车机身份已变化，请重置受信任车机后重新连接。</string>
+    <string name="status_protocol_mismatch">状态：车机端 %1$s 使用协议 %2$d，当前手机端支持 %3$d-%4$d。请同时更新两端应用。</string>
     <string name="status_head_unit_trust_reset">状态：已重置受信任车机，请回到车机端重新连接。</string>
     <string name="generic_phone_device">手机</string>
     <string name="connection_service_channel_name">手机助手连接服务</string>
