@@ -21,6 +21,7 @@ import com.bsxu.carlyrics.phone.BuildConfig;
 import com.bsxu.carlyrics.phone.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
+import com.bsxu.carlyrics.bridge.ConnectionMaintenancePolicy;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
@@ -45,9 +46,6 @@ import java.util.UUID;
 public final class PhoneConnectionManager {
 
     private static final String TAG = "PhoneConnMgr";
-    private static final long HANDSHAKE_TIMEOUT_MS = 6000L;
-    private static final long KEEPALIVE_INTERVAL_MS = 4000L;
-    private static final long IDLE_TIMEOUT_MS = 15000L;
     private static final long SERVER_RESTART_INITIAL_DELAY_MS = 1200L;
     private static final long SERVER_RESTART_MAX_DELAY_MS = 15000L;
     private static final long CONNECTION_MAINTENANCE_TICK_MS = 1000L;
@@ -780,19 +778,24 @@ public final class PhoneConnectionManager {
             return;
         }
         long now = SystemClock.elapsedRealtime();
-        if (!handshakeComplete) {
-            if (handshakeStartedElapsedMs > 0L && now - handshakeStartedElapsedMs >= HANDSHAKE_TIMEOUT_MS) {
-                Log.w(TAG, "Handshake timed out for " + connectedClientName);
-                closeCurrentClientConnection(activeSocket, true);
-            }
+        ConnectionMaintenancePolicy.Action action = ConnectionMaintenancePolicy.evaluate(
+                handshakeComplete,
+                handshakeStartedElapsedMs,
+                lastInboundElapsedMs,
+                lastOutboundElapsedMs,
+                now
+        );
+        if (action == ConnectionMaintenancePolicy.Action.HANDSHAKE_TIMEOUT) {
+            Log.w(TAG, "Handshake timed out for " + connectedClientName);
+            closeCurrentClientConnection(activeSocket, true);
             return;
         }
-        if (lastInboundElapsedMs > 0L && now - lastInboundElapsedMs >= IDLE_TIMEOUT_MS) {
+        if (action == ConnectionMaintenancePolicy.Action.IDLE_TIMEOUT) {
             Log.w(TAG, "Connection idle timeout reached for " + connectedClientName);
             closeCurrentClientConnection(activeSocket, true);
             return;
         }
-        if (now - lastOutboundElapsedMs >= KEEPALIVE_INTERVAL_MS) {
+        if (action == ConnectionMaintenancePolicy.Action.SEND_KEEPALIVE) {
             pendingPingNonce = now;
             writeLine(activeSocket, BridgeCodec.encodePing(new PingMessage(pendingPingNonce)), false);
         }
@@ -1003,8 +1006,10 @@ public final class PhoneConnectionManager {
     }
 
     private long computeServerRestartDelay(int attempt) {
-        int safeAttempt = Math.max(0, Math.min(attempt, 6));
-        long delay = SERVER_RESTART_INITIAL_DELAY_MS * (1L << safeAttempt);
-        return Math.min(delay, SERVER_RESTART_MAX_DELAY_MS);
+        return ConnectionMaintenancePolicy.computeBackoffDelay(
+                SERVER_RESTART_INITIAL_DELAY_MS,
+                SERVER_RESTART_MAX_DELAY_MS,
+                attempt
+        );
     }
 }

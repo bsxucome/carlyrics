@@ -21,6 +21,7 @@ import com.bsxu.carlyrics.BuildConfig;
 import com.bsxu.carlyrics.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
+import com.bsxu.carlyrics.bridge.ConnectionMaintenancePolicy;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
@@ -49,9 +50,6 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public final class HeadUnitCompanionManager {
 
     private static final String TAG = "HeadUnitBt";
-    private static final long HANDSHAKE_TIMEOUT_MS = 6000L;
-    private static final long KEEPALIVE_INTERVAL_MS = 4000L;
-    private static final long IDLE_TIMEOUT_MS = 15000L;
     private static final long RECONNECT_INITIAL_DELAY_MS = 1200L;
     private static final long RECONNECT_MAX_DELAY_MS = 15000L;
     private static final long CONNECTION_MAINTENANCE_TICK_MS = 1000L;
@@ -753,9 +751,11 @@ public final class HeadUnitCompanionManager {
     }
 
     private long computeBackoffDelay(int attempt) {
-        int safeAttempt = Math.max(0, Math.min(attempt, 6));
-        long delay = RECONNECT_INITIAL_DELAY_MS * (1L << safeAttempt);
-        return Math.min(delay, RECONNECT_MAX_DELAY_MS);
+        return ConnectionMaintenancePolicy.computeBackoffDelay(
+                RECONNECT_INITIAL_DELAY_MS,
+                RECONNECT_MAX_DELAY_MS,
+                attempt
+        );
     }
 
     private ArrayList<String> buildReconnectCandidateAddresses() {
@@ -798,20 +798,28 @@ public final class HeadUnitCompanionManager {
             return;
         }
         long now = SystemClock.elapsedRealtime();
-        if (!handshakeComplete) {
-            if (handshakeStartedElapsedMs > 0L && now - handshakeStartedElapsedMs >= HANDSHAKE_TIMEOUT_MS) {
-                Log.w(TAG, "Handshake timed out");
-                closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
-            }
+        ConnectionMaintenancePolicy.Action action = ConnectionMaintenancePolicy.evaluate(
+                handshakeComplete,
+                handshakeStartedElapsedMs,
+                lastInboundElapsedMs,
+                lastOutboundElapsedMs,
+                now
+        );
+        if (action == ConnectionMaintenancePolicy.Action.HANDSHAKE_TIMEOUT) {
+            Log.w(TAG, "Handshake timed out");
+            closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
             return;
         }
-        if (lastInboundElapsedMs > 0L && now - lastInboundElapsedMs >= IDLE_TIMEOUT_MS) {
+        if (action == ConnectionMaintenancePolicy.Action.IDLE_TIMEOUT) {
             Log.w(TAG, "Connection idle timeout reached");
             closeCurrentConnection(activeSocket, true, string(R.string.connection_state_unreachable), true);
             return;
         }
+        if (!handshakeComplete) {
+            return;
+        }
         maybeRequestStateReplay(activeSocket, now);
-        if (now - lastOutboundElapsedMs >= KEEPALIVE_INTERVAL_MS) {
+        if (action == ConnectionMaintenancePolicy.Action.SEND_KEEPALIVE) {
             pendingPingNonce = now;
             writeLine(activeSocket, BridgeCodec.encodePing(new PingMessage(pendingPingNonce)), false);
         }
