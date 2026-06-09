@@ -3,29 +3,30 @@ package com.bsxu.carlyrics.phone.lyrics;
 import android.content.Context;
 
 import com.bsxu.carlyrics.phone.companion.ObservedPlaybackSnapshot;
+import com.bsxu.carlyrics.phone.util.BoundedLruCache;
 
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class PhoneLyricsRepository {
 
     private static final long PROVIDER_TIMEOUT_MS = 4500L;
+    private static final int MAX_MEMORY_CACHE_ENTRIES = 32;
 
     public interface Callback {
         void onLoaded(PhoneLyricsResult result);
     }
 
     private final ExecutorService executorService;
-    private final Map<String, PhoneLyricsResult> memoryCache;
+    private final BoundedLruCache<String, PhoneLyricsResult> memoryCache;
     private final PhoneLyricsDiskCache diskCache;
     private final PhoneLyricsSettings settings;
 
     public PhoneLyricsRepository(Context context) {
         this.executorService = Executors.newSingleThreadExecutor();
-        this.memoryCache = new ConcurrentHashMap<String, PhoneLyricsResult>();
+        this.memoryCache =
+                new BoundedLruCache<String, PhoneLyricsResult>(MAX_MEMORY_CACHE_ENTRIES);
         this.diskCache = new PhoneLyricsDiskCache(context);
         this.settings = new PhoneLyricsSettings(context);
     }

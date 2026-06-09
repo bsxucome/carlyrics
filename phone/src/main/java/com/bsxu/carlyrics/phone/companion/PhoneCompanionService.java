@@ -23,6 +23,7 @@ import android.util.Log;
 
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsRepository;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsResult;
+import com.bsxu.carlyrics.phone.util.BoundedLruCache;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,8 +32,6 @@ import java.util.Collections;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class PhoneCompanionService extends NotificationListenerService {
 
@@ -41,6 +40,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     private static final int ARTWORK_RETRY_MAX_ATTEMPTS = 12;
     private static final long LYRICS_RETRY_DELAY_MS = 2500L;
     private static final int LYRICS_RETRY_MAX_ATTEMPTS = 8;
+    private static final int MAX_ARTWORK_CACHE_ENTRIES = 12;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ArrayList<MediaController> activeControllers = new ArrayList<MediaController>();
@@ -111,7 +111,8 @@ public class PhoneCompanionService extends NotificationListenerService {
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
     private PhoneConnectionManager connectionManager;
-    private final Map<String, Bitmap> artworkCache = new ConcurrentHashMap<String, Bitmap>();
+    private final BoundedLruCache<String, Bitmap> artworkCache =
+            new BoundedLruCache<String, Bitmap>(MAX_ARTWORK_CACHE_ENTRIES);
 
     private volatile MediaController currentController;
     private volatile ObservedPlaybackSnapshot currentSnapshot;

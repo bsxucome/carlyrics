@@ -26,11 +26,23 @@ final class PhoneLyricsDiskCache {
 
     private static final String CACHE_DIRECTORY = "lyrics-cache";
     private static final int MAX_CACHE_ENTRIES = 200;
+    private static final long MAX_CACHE_BYTES = 8L * 1024L * 1024L;
+    private static final long MAX_CACHE_FILE_BYTES = 512L * 1024L;
+    private static final long MAX_CACHE_AGE_MS = 30L * 24L * 60L * 60L * 1000L;
 
     private final File cacheDirectory;
+    private final TimeSource timeSource;
 
     PhoneLyricsDiskCache(Context context) {
-        cacheDirectory = new File(context.getApplicationContext().getFilesDir(), CACHE_DIRECTORY);
+        this(
+                new File(context.getApplicationContext().getFilesDir(), CACHE_DIRECTORY),
+                new SystemTimeSource()
+        );
+    }
+
+    PhoneLyricsDiskCache(File cacheDirectory, TimeSource timeSource) {
+        this.cacheDirectory = cacheDirectory;
+        this.timeSource = timeSource;
     }
 
     PhoneLyricsResult get(String trackKey) {
@@ -38,9 +50,21 @@ final class PhoneLyricsDiskCache {
         if (!cacheFile.isFile()) {
             return null;
         }
+        long now = timeSource.currentTimeMillis();
+        if (cacheFile.length() <= 0L
+                || cacheFile.length() > MAX_CACHE_FILE_BYTES
+                || isExpired(cacheFile, now)) {
+            deleteQuietly(cacheFile);
+            return null;
+        }
         try {
             JSONObject object = new JSONObject(readFile(cacheFile));
             if (!trackKey.equals(object.optString("trackKey", ""))) {
+                deleteQuietly(cacheFile);
+                return null;
+            }
+            long cachedAtMs = object.optLong("cachedAtMs", cacheFile.lastModified());
+            if (cachedAtMs <= 0L || now - cachedAtMs > MAX_CACHE_AGE_MS) {
                 deleteQuietly(cacheFile);
                 return null;
             }
@@ -61,7 +85,7 @@ final class PhoneLyricsDiskCache {
                 deleteQuietly(cacheFile);
                 return null;
             }
-            cacheFile.setLastModified(System.currentTimeMillis());
+            cacheFile.setLastModified(now);
             return new PhoneLyricsResult(
                     trackKey,
                     "Cache · " + object.optString("sourceLabel", "lyrics"),
@@ -91,6 +115,7 @@ final class PhoneLyricsDiskCache {
             object.put("trackKey", result.trackKey);
             object.put("sourceLabel", stripCachePrefix(result.sourceLabel));
             object.put("synced", result.synced);
+            object.put("cachedAtMs", timeSource.currentTimeMillis());
             JSONArray lines = new JSONArray();
             for (RemoteLyricLine line : result.lines) {
                 JSONObject lineObject = new JSONObject();
@@ -99,7 +124,12 @@ final class PhoneLyricsDiskCache {
                 lines.put(lineObject);
             }
             object.put("lines", lines);
-            writeFile(temporaryFile, object.toString());
+            String encoded = object.toString();
+            if (encoded.getBytes("UTF-8").length > MAX_CACHE_FILE_BYTES) {
+                deleteQuietly(temporaryFile);
+                return;
+            }
+            writeFile(temporaryFile, encoded);
             if (cacheFile.exists() && !cacheFile.delete()) {
                 deleteQuietly(temporaryFile);
                 return;
@@ -118,19 +148,48 @@ final class PhoneLyricsDiskCache {
 
     private void trimCache() {
         File[] files = cacheDirectory.listFiles();
-        if (files == null || files.length <= MAX_CACHE_ENTRIES) {
+        if (files == null) {
             return;
         }
-        Arrays.sort(files, new Comparator<File>() {
+        long now = timeSource.currentTimeMillis();
+        ArrayList<File> validFiles = new ArrayList<File>();
+        long totalBytes = 0L;
+        for (File file : files) {
+            if (file == null) {
+                continue;
+            }
+            if (!file.getName().endsWith(".json")
+                    || file.length() <= 0L
+                    || file.length() > MAX_CACHE_FILE_BYTES
+                    || isExpired(file, now)) {
+                deleteQuietly(file);
+                continue;
+            }
+            validFiles.add(file);
+            totalBytes += file.length();
+        }
+        File[] orderedFiles = validFiles.toArray(new File[0]);
+        Arrays.sort(orderedFiles, new Comparator<File>() {
             @Override
             public int compare(File first, File second) {
                 return Long.compare(first.lastModified(), second.lastModified());
             }
         });
-        int deleteCount = files.length - MAX_CACHE_ENTRIES;
-        for (int i = 0; i < deleteCount; i++) {
-            deleteQuietly(files[i]);
+        int remainingEntries = orderedFiles.length;
+        for (File file : orderedFiles) {
+            if (remainingEntries <= MAX_CACHE_ENTRIES && totalBytes <= MAX_CACHE_BYTES) {
+                break;
+            }
+            long fileBytes = file.length();
+            deleteQuietly(file);
+            remainingEntries--;
+            totalBytes = Math.max(0L, totalBytes - fileBytes);
         }
+    }
+
+    private boolean isExpired(File file, long now) {
+        long lastModified = file.lastModified();
+        return lastModified <= 0L || now - lastModified > MAX_CACHE_AGE_MS;
     }
 
     private File getCacheFile(String trackKey) {
@@ -160,6 +219,9 @@ final class PhoneLyricsDiskCache {
     }
 
     private static String readFile(File file) throws IOException {
+        if (file.length() > MAX_CACHE_FILE_BYTES) {
+            throw new IOException("Lyrics cache file exceeds size limit");
+        }
         BufferedReader reader = new BufferedReader(
                 new InputStreamReader(new FileInputStream(file), "UTF-8")
         );
@@ -168,6 +230,9 @@ final class PhoneLyricsDiskCache {
             char[] buffer = new char[4096];
             int count;
             while ((count = reader.read(buffer)) != -1) {
+                if (builder.length() + count > MAX_CACHE_FILE_BYTES) {
+                    throw new IOException("Lyrics cache file exceeds size limit");
+                }
                 builder.append(buffer, 0, count);
             }
             return builder.toString();
@@ -192,6 +257,17 @@ final class PhoneLyricsDiskCache {
     private static void deleteQuietly(File file) {
         if (file != null && file.exists()) {
             file.delete();
+        }
+    }
+
+    interface TimeSource {
+        long currentTimeMillis();
+    }
+
+    private static final class SystemTimeSource implements TimeSource {
+        @Override
+        public long currentTimeMillis() {
+            return System.currentTimeMillis();
         }
     }
 }

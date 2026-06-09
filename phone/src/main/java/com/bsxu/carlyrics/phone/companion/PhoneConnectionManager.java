@@ -30,6 +30,7 @@ import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
 import com.bsxu.carlyrics.bridge.RemoteSessionStatusPayload;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsResult;
+import com.bsxu.carlyrics.phone.util.BoundedLruCache;
 
 import org.json.JSONException;
 
@@ -39,9 +40,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class PhoneConnectionManager {
 
@@ -53,6 +52,7 @@ public final class PhoneConnectionManager {
     private static final long SERVER_RESTART_MAX_DELAY_MS = 15000L;
     private static final long CONNECTION_MAINTENANCE_TICK_MS = 1000L;
     private static final long LISTENER_REPAIR_REQUEST_MIN_INTERVAL_MS = 8000L;
+    private static final int MAX_ARTWORK_PAYLOAD_CACHE_ENTRIES = 12;
 
     public interface ControlDelegate {
         void onPlayPauseRequested();
@@ -137,7 +137,7 @@ public final class PhoneConnectionManager {
     private volatile boolean allowTrustedIdentityReplacement;
     private volatile boolean trustedHeadUnitMismatchPending;
     private volatile long lastListenerRepairRequestElapsedMs;
-    private final Map<String, String> artworkPayloadCache;
+    private final BoundedLruCache<String, String> artworkPayloadCache;
     private volatile RemoteSessionStatusPayload currentSessionStatus =
             new RemoteSessionStatusPayload(false, false, false, false, false);
     private volatile boolean shouldRun = false;
@@ -148,7 +148,8 @@ public final class PhoneConnectionManager {
         this.identityStore = new PhoneIdentityStore(appContext);
         this.writeLock = new Object();
         this.sessionLock = new Object();
-        this.artworkPayloadCache = new ConcurrentHashMap<String, String>();
+        this.artworkPayloadCache =
+                new BoundedLruCache<String, String>(MAX_ARTWORK_PAYLOAD_CACHE_ENTRIES);
         updateUiStatus(appContext.getString(R.string.status_idle));
     }
 
