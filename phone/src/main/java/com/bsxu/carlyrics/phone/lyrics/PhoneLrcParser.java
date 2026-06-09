@@ -12,6 +12,10 @@ import java.util.regex.Pattern;
 public final class PhoneLrcParser {
 
     private static final Pattern TIMESTAMP_PATTERN = Pattern.compile("\\[(\\d{1,2}):(\\d{1,2})(?:\\.(\\d{1,3}))?\\]");
+    static final int MAX_RAW_LYRICS_CHARS = 512 * 1024;
+    static final int MAX_LYRIC_LINES = 1500;
+    static final int MAX_LINE_CHARS = 500;
+    static final int MAX_TOTAL_TEXT_CHARS = 192 * 1024;
 
     private PhoneLrcParser() {
     }
@@ -22,7 +26,10 @@ public final class PhoneLrcParser {
             return lines;
         }
 
-        String[] rawLines = rawText.split("\\r?\\n");
+        String boundedText = limitRawText(rawText);
+        String[] rawLines = boundedText.split("\\r?\\n");
+        int totalTextChars = 0;
+        parseLines:
         for (String rawLine : rawLines) {
             Matcher matcher = TIMESTAMP_PATTERN.matcher(rawLine);
             List<Long> times = new ArrayList<Long>();
@@ -34,9 +41,14 @@ public final class PhoneLrcParser {
             if (times.isEmpty()) {
                 continue;
             }
-            String content = rawLine.substring(contentStart).trim();
+            String content = limitLineText(rawLine.substring(contentStart).trim());
             for (Long time : times) {
+                if (lines.size() >= MAX_LYRIC_LINES
+                        || totalTextChars + content.length() > MAX_TOTAL_TEXT_CHARS) {
+                    break parseLines;
+                }
                 lines.add(new RemoteLyricLine(time.longValue(), content));
+                totalTextChars += content.length();
             }
         }
 
@@ -55,14 +67,33 @@ public final class PhoneLrcParser {
             return lines;
         }
 
-        String[] rawLines = rawText.split("\\r?\\n");
+        String boundedText = limitRawText(rawText);
+        String[] rawLines = boundedText.split("\\r?\\n");
+        int totalTextChars = 0;
         for (String rawLine : rawLines) {
-            String trimmed = rawLine.trim();
+            String trimmed = limitLineText(rawLine.trim());
             if (!trimmed.isEmpty()) {
+                if (lines.size() >= MAX_LYRIC_LINES
+                        || totalTextChars + trimmed.length() > MAX_TOTAL_TEXT_CHARS) {
+                    break;
+                }
                 lines.add(new RemoteLyricLine(-1L, trimmed));
+                totalTextChars += trimmed.length();
             }
         }
         return lines;
+    }
+
+    private static String limitRawText(String value) {
+        return value.length() <= MAX_RAW_LYRICS_CHARS
+                ? value
+                : value.substring(0, MAX_RAW_LYRICS_CHARS);
+    }
+
+    private static String limitLineText(String value) {
+        return value.length() <= MAX_LINE_CHARS
+                ? value
+                : value.substring(0, MAX_LINE_CHARS);
     }
 
     private static long parseTimeMs(String minute, String second, String fraction) {

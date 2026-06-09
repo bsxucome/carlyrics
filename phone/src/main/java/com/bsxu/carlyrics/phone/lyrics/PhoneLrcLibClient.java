@@ -1,6 +1,5 @@
 package com.bsxu.carlyrics.phone.lyrics;
 
-import android.text.TextUtils;
 import android.util.Log;
 
 import com.bsxu.carlyrics.bridge.RemoteLyricLine;
@@ -10,7 +9,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -18,34 +16,17 @@ import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.SSLSocketFactory;
-import javax.net.ssl.X509TrustManager;
+import java.util.Locale;
 
 public final class PhoneLrcLibClient implements PhoneLyricsProvider {
 
     private static final String TAG = "PhoneLrcLib";
-    private static final String LRCLIB_HOST = "lrclib.net";
+    private static final int MAX_RESPONSE_CHARS = 1024 * 1024;
+    private static final int MAX_SEARCH_CANDIDATES = 50;
     private static final String USER_AGENT =
             "CarLyricsPhoneCompanion/" + BuildConfig.VERSION_NAME
                     + " (https://github.com/bsxucome/carlyrics)";
-    private static final AtomicBoolean insecureTlsLogPrinted = new AtomicBoolean(false);
-    private static final SSLSocketFactory INSECURE_SSL_SOCKET_FACTORY = buildInsecureSocketFactory();
-    private static final HostnameVerifier INSECURE_HOSTNAME_VERIFIER = new HostnameVerifier() {
-        @Override
-        public boolean verify(String hostname, SSLSession session) {
-            return LRCLIB_HOST.equalsIgnoreCase(hostname) || ("www." + LRCLIB_HOST).equalsIgnoreCase(hostname);
-        }
-    };
 
     private final String baseUrl;
     private final String sourceLabel;
@@ -200,7 +181,8 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
 
             JSONArray results = new JSONArray(readString(connection.getInputStream()));
             CandidateMatch bestMatch = null;
-            for (int i = 0; i < results.length(); i++) {
+            int candidateCount = Math.min(results.length(), MAX_SEARCH_CANDIDATES);
+            for (int i = 0; i < candidateCount; i++) {
                 JSONObject candidate = results.optJSONObject(i);
                 if (candidate == null) {
                     continue;
@@ -241,7 +223,6 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         connection.setReadTimeout(Math.min(2500, remainingTimeoutMs));
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", USER_AGENT);
-        maybeAllowInsecureTls(url, connection);
         return connection;
     }
 
@@ -256,22 +237,6 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         }
         long remainingMs = Math.max(1L, remainingNanos / 1_000_000L);
         return (int) Math.min(Integer.MAX_VALUE, remainingMs);
-    }
-
-    private void maybeAllowInsecureTls(URL url, HttpURLConnection connection) {
-        if (!(connection instanceof HttpsURLConnection) || url == null) {
-            return;
-        }
-        String host = url.getHost();
-        if (!LRCLIB_HOST.equalsIgnoreCase(host) && !("www." + LRCLIB_HOST).equalsIgnoreCase(host)) {
-            return;
-        }
-        HttpsURLConnection httpsConnection = (HttpsURLConnection) connection;
-        httpsConnection.setSSLSocketFactory(INSECURE_SSL_SOCKET_FACTORY);
-        httpsConnection.setHostnameVerifier(INSECURE_HOSTNAME_VERIFIER);
-        if (insecureTlsLogPrinted.compareAndSet(false, true)) {
-            Log.w(TAG, "Using insecure TLS fallback for lrclib.net because the upstream certificate is currently invalid");
-        }
     }
 
     private PhoneLyricsResult parseLyricsResult(String trackKey, JSONObject object, String sourceLabel) {
@@ -383,11 +348,11 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         return code >= 200 && code < 300;
     }
 
-    private static String normalize(String value) {
+    static String normalize(String value) {
         if (value == null) {
             return "";
         }
-        return value.trim().toLowerCase()
+        return value.trim().toLowerCase(Locale.ROOT)
                 .replace("&", "and")
                 .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "");
     }
@@ -397,41 +362,20 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
     }
 
     private static String readString(InputStream inputStream) throws IOException {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, "UTF-8"));
+        InputStreamReader reader = new InputStreamReader(inputStream, "UTF-8");
         try {
             StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                builder.append(line);
+            char[] buffer = new char[4096];
+            int readCount;
+            while ((readCount = reader.read(buffer)) != -1) {
+                if (builder.length() + readCount > MAX_RESPONSE_CHARS) {
+                    throw new IOException("Lyrics provider response exceeds size limit");
+                }
+                builder.append(buffer, 0, readCount);
             }
             return builder.toString();
         } finally {
             reader.close();
-        }
-    }
-
-    private static SSLSocketFactory buildInsecureSocketFactory() {
-        try {
-            SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, new X509TrustManager[]{
-                    new X509TrustManager() {
-                        @Override
-                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                        }
-
-                        @Override
-                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                        }
-
-                        @Override
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                        }
-                    }
-            }, new SecureRandom());
-            return sslContext.getSocketFactory();
-        } catch (GeneralSecurityException exception) {
-            throw new IllegalStateException("Unable to initialize insecure LRCLIB TLS fallback", exception);
         }
     }
 
@@ -566,17 +510,17 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         return value == null ? "" : value.trim();
     }
 
-    private static String cleanTitle(String title) {
+    static String cleanTitle(String title) {
         String cleaned = safeTrim(title);
-        cleaned = cleaned.replaceAll("\\s*[\\(\\[\\u3010\\uFF08][^\\)\\]\\u3011\\uFF09]{0,40}(live|remaster|version|ver\\.?|mix|edit|cover|karaoke|theme|ost)[^\\)\\]\\u3011\\uFF09]*[\\)\\]\\u3011\\uFF09]\\s*$", "");
+        cleaned = cleaned.replaceAll("(?i)\\s*[\\(\\[\\u3010\\uFF08][^\\)\\]\\u3011\\uFF09]{0,40}(live|remaster|version|ver\\.?|mix|edit|cover|karaoke|theme|ost)[^\\)\\]\\u3011\\uFF09]*[\\)\\]\\u3011\\uFF09]\\s*$", "");
         cleaned = cleaned.replaceAll("\\s+-\\s+.*$", "");
-        cleaned = cleaned.replaceAll("\\s+(feat\\.?|ft\\.?|with)\\s+.*$", "");
+        cleaned = cleaned.replaceAll("(?i)\\s+(feat\\.?|ft\\.?|with)\\s+.*$", "");
         return safeTrim(cleaned);
     }
 
-    private static String cleanArtist(String artist) {
+    static String cleanArtist(String artist) {
         String cleaned = safeTrim(artist);
-        cleaned = cleaned.replaceAll("\\s+(feat\\.?|ft\\.?|with)\\s+.*$", "");
+        cleaned = cleaned.replaceAll("(?i)\\s+(feat\\.?|ft\\.?|with)\\s+.*$", "");
         cleaned = firstArtistOnly(cleaned);
         return safeTrim(cleaned);
     }
@@ -585,9 +529,9 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         return safeTrim(album);
     }
 
-    private static String firstArtistOnly(String artist) {
+    static String firstArtistOnly(String artist) {
         String value = safeTrim(artist);
-        if (TextUtils.isEmpty(value)) {
+        if (value.isEmpty()) {
             return "";
         }
         String[] separators = new String[]{

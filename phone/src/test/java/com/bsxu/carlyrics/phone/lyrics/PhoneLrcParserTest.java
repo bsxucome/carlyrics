@@ -60,6 +60,33 @@ public class PhoneLrcParserTest {
         assertTrue(PhoneLrcParser.parsePlainLyrics(null).isEmpty());
     }
 
+    @Test
+    public void capsLineLength() {
+        StringBuilder longLine = new StringBuilder();
+        for (int i = 0; i < PhoneLrcParser.MAX_LINE_CHARS + 20; i++) {
+            longLine.append('x');
+        }
+
+        List<RemoteLyricLine> lines =
+                PhoneLrcParser.parseSyncedLyrics("[00:01.00]" + longLine);
+
+        assertEquals(1, lines.size());
+        assertEquals(PhoneLrcParser.MAX_LINE_CHARS, lines.get(0).text.length());
+    }
+
+    @Test
+    public void capsExpandedSyncedLineCount() {
+        StringBuilder rawLyrics = new StringBuilder();
+        for (int i = 0; i < PhoneLrcParser.MAX_LYRIC_LINES + 20; i++) {
+            rawLyrics.append("[00:01.00]");
+        }
+        rawLyrics.append("repeat");
+
+        List<RemoteLyricLine> lines = PhoneLrcParser.parseSyncedLyrics(rawLyrics.toString());
+
+        assertEquals(PhoneLrcParser.MAX_LYRIC_LINES, lines.size());
+    }
+
     private static void assertLine(RemoteLyricLine line, long timeMs, String text) {
         assertEquals(timeMs, line.timeMs);
         assertEquals(text, line.text);
