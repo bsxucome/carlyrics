@@ -48,6 +48,9 @@ public class PhoneMainActivity extends ComponentActivity {
             registerForActivityResult(
                     new ActivityResultContracts.RequestPermission(),
                     granted -> {
+                        if (granted) {
+                            ensureConnectionServiceRunning();
+                        }
                         refreshConnectionPermissionState();
                         renderStatus();
                         startStatusRefreshTicker();
@@ -98,7 +101,7 @@ public class PhoneMainActivity extends ComponentActivity {
         configureLyricsServerButton.setOnClickListener(v -> showLyricsServerDialog());
         resetLyricsServerButton.setOnClickListener(v -> resetLyricsServer());
 
-        ensureConnectionServiceRunning();
+        ensureConnectionServiceRunningIfPermitted();
         requestNotificationPermissionIfNeeded();
         refreshConnectionPermissionState();
         renderStatus();
@@ -113,7 +116,7 @@ public class PhoneMainActivity extends ComponentActivity {
                     new ComponentName(this, PhoneCompanionService.class)
             );
         }
-        ensureConnectionServiceRunning();
+        ensureConnectionServiceRunningIfPermitted();
         refreshConnectionPermissionState();
         renderStatus();
         startStatusRefreshTicker();
@@ -246,6 +249,12 @@ public class PhoneMainActivity extends ComponentActivity {
         startService(serviceIntent);
     }
 
+    private void ensureConnectionServiceRunningIfPermitted() {
+        if (hasBluetoothPermission()) {
+            ensureConnectionServiceRunning();
+        }
+    }
+
     private void refreshConnectionPermissionState() {
         PhoneConnectionManager.getInstance(this).setNotificationAccessGranted(hasNotificationAccess());
     }
@@ -376,6 +385,10 @@ public class PhoneMainActivity extends ComponentActivity {
     private void handleNotificationButtonClick() {
         if (!hasNotificationAccess()) {
             beginNotificationSetupFlow();
+            return;
+        }
+        if (!hasBluetoothPermission()) {
+            requestBluetoothPermissionIfNeeded();
             return;
         }
         Intent repairIntent = new Intent(this, PhoneConnectionService.class);

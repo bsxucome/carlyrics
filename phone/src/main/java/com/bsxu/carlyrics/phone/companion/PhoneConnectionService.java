@@ -1,5 +1,6 @@
 package com.bsxu.carlyrics.phone.companion;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -50,6 +51,10 @@ public class PhoneConnectionService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        if (!hasBluetoothPermission()) {
+            stopSelf();
+            return;
+        }
         startInForeground();
         PhoneConnectionManager.getInstance(this).start();
         startNotificationListenerWatchdog();
@@ -57,6 +62,10 @@ public class PhoneConnectionService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!hasBluetoothPermission()) {
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         startInForeground();
         PhoneConnectionManager.getInstance(this).start();
         if (intent != null && ACTION_FORCE_RECOVER_LISTENER.equals(intent.getAction())) {
@@ -86,6 +95,12 @@ public class PhoneConnectionService extends Service {
     private void startNotificationListenerWatchdog() {
         mainHandler.removeCallbacks(notificationListenerWatchdog);
         mainHandler.post(notificationListenerWatchdog);
+    }
+
+    private boolean hasBluetoothPermission() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     private void ensureNotificationListenerBound() {
