@@ -1,7 +1,6 @@
 package com.bsxu.carlyrics.phone;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.res.ColorStateList;
 import android.content.ActivityNotFoundException;
@@ -23,6 +22,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.ComponentActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionManager;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
 import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
@@ -30,7 +33,7 @@ import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsSettings;
 
 import java.util.ArrayList;
 
-public class PhoneMainActivity extends Activity {
+public class PhoneMainActivity extends ComponentActivity {
 
     private static final String NOTIFICATION_LISTENER_SETTINGS_ACTION =
             "android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS";
@@ -38,10 +41,23 @@ public class PhoneMainActivity extends Activity {
     private static final int ACTION_SECONDARY_TINT = 0xFF263648;
     private static final int ACTION_PRIMARY_TEXT = 0xFFFFFFFF;
     private static final int ACTION_SECONDARY_TEXT = 0xFFE2F5FF;
-    private static final int REQUEST_BLUETOOTH_CONNECT = 501;
     private static final long STATUS_REFRESH_INTERVAL_MS = 1000L;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final ActivityResultLauncher<String> bluetoothPermissionLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.RequestPermission(),
+                    granted -> {
+                        refreshConnectionPermissionState();
+                        renderStatus();
+                        startStatusRefreshTicker();
+                    }
+            );
+    private final ActivityResultLauncher<String> notificationPermissionLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.RequestPermission(),
+                    granted -> renderStatus()
+            );
     private final Runnable statusRefreshTicker = new Runnable() {
         @Override
         public void run() {
@@ -83,6 +99,7 @@ public class PhoneMainActivity extends Activity {
         resetLyricsServerButton.setOnClickListener(v -> resetLyricsServer());
 
         ensureConnectionServiceRunning();
+        requestNotificationPermissionIfNeeded();
         refreshConnectionPermissionState();
         renderStatus();
         startStatusRefreshTicker();
@@ -116,16 +133,6 @@ public class PhoneMainActivity extends Activity {
         renderStatus();
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_BLUETOOTH_CONNECT) {
-            refreshConnectionPermissionState();
-            renderStatus();
-            startStatusRefreshTicker();
-        }
-    }
-
     private void requestBluetoothPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             renderStatus();
@@ -135,7 +142,15 @@ public class PhoneMainActivity extends Activity {
             renderStatus();
             return;
         }
-        requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH_CONNECT);
+        bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT);
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        }
     }
 
     private void renderStatus() {

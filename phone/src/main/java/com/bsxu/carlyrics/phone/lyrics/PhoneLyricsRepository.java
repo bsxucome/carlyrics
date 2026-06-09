@@ -8,6 +8,7 @@ import com.bsxu.carlyrics.phone.util.BoundedLruCache;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class PhoneLyricsRepository {
 
@@ -22,6 +23,7 @@ public final class PhoneLyricsRepository {
     private final BoundedLruCache<String, PhoneLyricsResult> memoryCache;
     private final PhoneLyricsDiskCache diskCache;
     private final PhoneLyricsSettings settings;
+    private final AtomicInteger requestGeneration;
 
     public PhoneLyricsRepository(Context context) {
         this.executorService = Executors.newSingleThreadExecutor();
@@ -29,6 +31,7 @@ public final class PhoneLyricsRepository {
                 new BoundedLruCache<String, PhoneLyricsResult>(MAX_MEMORY_CACHE_ENTRIES);
         this.diskCache = new PhoneLyricsDiskCache(context);
         this.settings = new PhoneLyricsSettings(context);
+        this.requestGeneration = new AtomicInteger();
     }
 
     public void requestLyrics(final ObservedPlaybackSnapshot snapshot, final boolean forceRefresh, final Callback callback) {
@@ -39,6 +42,7 @@ public final class PhoneLyricsRepository {
             return;
         }
 
+        final int generation = requestGeneration.incrementAndGet();
         executorService.execute(new Runnable() {
             @Override
             public void run() {
@@ -75,11 +79,16 @@ public final class PhoneLyricsRepository {
                         diskCache.put(cached);
                     }
                 }
-                if (callback != null) {
+                if (callback != null && generation == requestGeneration.get()) {
                     callback.onLoaded(cached);
                 }
             }
         });
+    }
+
+    public void close() {
+        requestGeneration.incrementAndGet();
+        executorService.shutdownNow();
     }
 }
 

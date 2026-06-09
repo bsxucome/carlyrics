@@ -1,7 +1,6 @@
 package com.bsxu.carlyrics;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -24,6 +23,10 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.ComponentActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.RemoteLyricLine;
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
@@ -41,14 +44,52 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-public class MainActivity extends Activity implements HeadUnitCompanionManager.Listener {
+public class MainActivity extends ComponentActivity implements HeadUnitCompanionManager.Listener {
 
     private static final String TAG = "HeadUnitMain";
     private static final String EXTRA_DEBUG_CONNECT_ADDRESS = "connect_address";
-    private static final int REQUEST_ENABLE_BLUETOOTH = 201;
-    private static final int REQUEST_BLUETOOTH_CONNECT_PERMISSION = 202;
+    private boolean awaitingReconnectAfterPermission;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final ActivityResultLauncher<Intent> enableBluetoothLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    result -> {
+                        if (result.getResultCode() == RESULT_OK) {
+                            openBondedDevicePicker();
+                        } else {
+                            Toast.makeText(
+                                    this,
+                                    R.string.bluetooth_enable_required,
+                                    Toast.LENGTH_SHORT
+                            ).show();
+                        }
+                    }
+            );
+    private final ActivityResultLauncher<String[]> bluetoothPermissionLauncher =
+            registerForActivityResult(
+                    new ActivityResultContracts.RequestMultiplePermissions(),
+                    result -> {
+                        boolean granted = !result.isEmpty();
+                        for (Boolean permissionGranted : result.values()) {
+                            if (!Boolean.TRUE.equals(permissionGranted)) {
+                                granted = false;
+                                break;
+                            }
+                        }
+                        if (granted && awaitingReconnectAfterPermission) {
+                            awaitingReconnectAfterPermission = false;
+                            openBondedDevicePicker();
+                        } else if (!granted) {
+                            awaitingReconnectAfterPermission = false;
+                            Toast.makeText(
+                                    this,
+                                    R.string.bluetooth_permission_required,
+                                    Toast.LENGTH_SHORT
+                            ).show();
+                        }
+                    }
+            );
     private final Runnable progressTicker = new Runnable() {
         @Override
         public void run() {
@@ -96,8 +137,6 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
     private boolean diagnosticsVisible;
     private int backdropRequestVersion;
     private String backdropTrackKey = "";
-    private boolean awaitingReconnectAfterPermission;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -217,41 +256,6 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
         handleDebugConnectIntent(intent);
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_ENABLE_BLUETOOTH) {
-            if (resultCode == RESULT_OK) {
-                openBondedDevicePicker();
-            } else {
-                Toast.makeText(this, R.string.bluetooth_enable_required, Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_BLUETOOTH_CONNECT_PERMISSION) {
-            boolean granted = grantResults.length > 0;
-            for (int grantResult : grantResults) {
-                if (grantResult != PackageManager.PERMISSION_GRANTED) {
-                    granted = false;
-                    break;
-                }
-            }
-            if (granted) {
-                if (awaitingReconnectAfterPermission) {
-                    awaitingReconnectAfterPermission = false;
-                    openBondedDevicePicker();
-                }
-            } else {
-                awaitingReconnectAfterPermission = false;
-                Toast.makeText(this, R.string.bluetooth_permission_required, Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
     private void bindViews() {
         permissionPanel = findViewById(R.id.permissionPanel);
         permissionDescriptionView = (TextView) findViewById(R.id.permissionDescription);
@@ -290,18 +294,17 @@ public class MainActivity extends Activity implements HeadUnitCompanionManager.L
                     && !hasAllBluetoothRuntimePermissions()) {
                 showConnectionMessage(getString(R.string.bluetooth_permission_required));
                 awaitingReconnectAfterPermission = true;
-                requestPermissions(
-                        new String[]{
-                                Manifest.permission.BLUETOOTH_CONNECT,
-                                Manifest.permission.BLUETOOTH_SCAN
-                        },
-                        REQUEST_BLUETOOTH_CONNECT_PERMISSION
-                );
+                bluetoothPermissionLauncher.launch(new String[]{
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.BLUETOOTH_SCAN
+                });
                 return;
             }
             if (!companionManager.isBluetoothEnabled()) {
                 showConnectionMessage(getString(R.string.bluetooth_enable_required));
-                startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), REQUEST_ENABLE_BLUETOOTH);
+                enableBluetoothLauncher.launch(
+                        new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                );
                 return;
             }
             openBondedDevicePicker();

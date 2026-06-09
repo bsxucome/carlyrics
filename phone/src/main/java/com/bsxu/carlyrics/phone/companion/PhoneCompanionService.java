@@ -2,15 +2,11 @@ package com.bsxu.carlyrics.phone.companion;
 
 import android.content.ComponentName;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -25,9 +21,6 @@ import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsRepository;
 import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsResult;
 import com.bsxu.carlyrics.phone.util.BoundedLruCache;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -111,6 +104,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     private MediaSessionManager mediaSessionManager;
     private PhoneLyricsRepository lyricsRepository;
     private PhoneConnectionManager connectionManager;
+    private PhoneArtworkResolver artworkResolver;
     private final BoundedLruCache<String, Bitmap> artworkCache =
             new BoundedLruCache<String, Bitmap>(MAX_ARTWORK_CACHE_ENTRIES);
 
@@ -129,6 +123,7 @@ public class PhoneCompanionService extends NotificationListenerService {
         super.onCreate();
         lyricsRepository = new PhoneLyricsRepository(this);
         connectionManager = PhoneConnectionManager.getInstance(this);
+        artworkResolver = new PhoneArtworkResolver(this);
         connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
         connectionManager.setNotificationListenerActive(false);
         connectionManager.setMediaState(false, false, false);
@@ -139,6 +134,9 @@ public class PhoneCompanionService extends NotificationListenerService {
     public void onDestroy() {
         cancelArtworkRetry();
         cancelLyricsRetry();
+        if (lyricsRepository != null) {
+            lyricsRepository.close();
+        }
         connectionManager.clearControlDelegate(controlDelegate);
         detachMediaSessionListener();
         super.onDestroy();
@@ -289,7 +287,7 @@ public class PhoneCompanionService extends NotificationListenerService {
                 if (!TextUtils.equals(notification.getPackageName(), currentSnapshot.packageName)) {
                     continue;
                 }
-                Bitmap artwork = readNotificationArtwork(notification);
+                Bitmap artwork = artworkResolver.fromNotification(notification);
                 if (artwork != null) {
                     publishSnapshot(new ObservedPlaybackSnapshot(
                             currentSnapshot.packageName,
@@ -375,7 +373,7 @@ public class PhoneCompanionService extends NotificationListenerService {
                 metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_DESCRIPTION)
         );
         MediaDescription description = metadata == null ? null : metadata.getDescription();
-        Bitmap artwork = resolveArtwork(metadata, description);
+        Bitmap artwork = artworkResolver.fromMedia(metadata, description);
 
         long durationMs = metadata == null ? 0L : metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
         int state = playbackState == null ? PlaybackState.STATE_NONE : playbackState.getState();
@@ -610,126 +608,6 @@ public class PhoneCompanionService extends NotificationListenerService {
         return false;
     }
 
-    private Bitmap readNotificationArtwork(StatusBarNotification sbn) {
-        if (sbn == null || sbn.getNotification() == null) {
-            return null;
-        }
-        Bundle extras = sbn.getNotification().extras;
-        if (extras == null) {
-            return null;
-        }
-        Object largeIcon = extras.getParcelable("android.largeIcon");
-        if (largeIcon instanceof Bitmap) {
-            return (Bitmap) largeIcon;
-        }
-        Object largeIconBig = extras.getParcelable("android.largeIcon.big");
-        if (largeIconBig instanceof Bitmap) {
-            return (Bitmap) largeIconBig;
-        }
-        Object picture = extras.getParcelable("android.picture");
-        if (picture instanceof Bitmap) {
-            return (Bitmap) picture;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && sbn.getNotification().getLargeIcon() != null) {
-            try {
-                Drawable drawable = sbn.getNotification().getLargeIcon().loadDrawable(this);
-                if (drawable instanceof BitmapDrawable) {
-                    return ((BitmapDrawable) drawable).getBitmap();
-                }
-            } catch (RuntimeException ignored) {
-            }
-        }
-        return null;
-    }
-
-    private Bitmap resolveArtwork(MediaMetadata metadata, MediaDescription description) {
-        Bitmap artwork = null;
-        if (metadata != null) {
-            artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-            if (artwork == null) {
-                artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-            }
-        }
-        if (artwork == null && description != null) {
-            artwork = description.getIconBitmap();
-        }
-        if (artwork != null) {
-            return artwork;
-        }
-
-        ArrayList<Uri> candidateUris = new ArrayList<Uri>();
-        if (description != null && description.getIconUri() != null) {
-            candidateUris.add(description.getIconUri());
-        }
-        if (metadata != null) {
-            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI));
-            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_ART_URI));
-            addUriIfPresent(candidateUris, metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI));
-        }
-
-        for (Uri candidateUri : candidateUris) {
-            artwork = loadArtworkFromUri(candidateUri);
-            if (artwork != null) {
-                return artwork;
-            }
-        }
-        return null;
-    }
-
-    private void addUriIfPresent(List<Uri> target, String uriString) {
-        if (target == null || TextUtils.isEmpty(uriString)) {
-            return;
-        }
-        try {
-            Uri uri = Uri.parse(uriString);
-            if (uri != null) {
-                target.add(uri);
-            }
-        } catch (RuntimeException ignored) {
-        }
-    }
-
-    private Bitmap loadArtworkFromUri(Uri uri) {
-        if (uri == null) {
-            return null;
-        }
-        String scheme = uri.getScheme();
-        try {
-            if ("content".equalsIgnoreCase(scheme)
-                    || "android.resource".equalsIgnoreCase(scheme)
-                    || "file".equalsIgnoreCase(scheme)) {
-                InputStream inputStream = getContentResolver().openInputStream(uri);
-                if (inputStream == null) {
-                    return null;
-                }
-                try {
-                    return decodeArtworkStream(inputStream);
-                } finally {
-                    inputStream.close();
-                }
-            }
-            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-                InputStream inputStream = new URL(uri.toString()).openStream();
-                try {
-                    return decodeArtworkStream(inputStream);
-                } finally {
-                    inputStream.close();
-                }
-            }
-        } catch (IOException ignored) {
-        } catch (SecurityException ignored) {
-        }
-        return null;
-    }
-
-    private Bitmap decodeArtworkStream(InputStream inputStream) {
-        if (inputStream == null) {
-            return null;
-        }
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inPreferredConfig = Bitmap.Config.RGB_565;
-        return BitmapFactory.decodeStream(inputStream, null, options);
-    }
 
     private void cacheArtwork(ObservedPlaybackSnapshot snapshot) {
         if (snapshot == null || snapshot.artwork == null) {

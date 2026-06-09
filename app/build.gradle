@@ -37,4 +37,5 @@ android {
 
 dependencies {
     implementation project(":bridge")
+    implementation "androidx.activity:activity:1.9.3"
 }

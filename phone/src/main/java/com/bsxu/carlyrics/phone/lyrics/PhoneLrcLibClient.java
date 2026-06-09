@@ -57,7 +57,7 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         CandidateMatch bestMatch = null;
 
         for (QueryVariant variant : variants) {
-            if (!hasTimeRemaining(deadlineNanos)) {
+            if (!canContinue(deadlineNanos)) {
                 break;
             }
             bestMatch = chooseBetter(
@@ -69,7 +69,7 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
             }
         }
         for (QueryVariant variant : variants) {
-            if (!hasTimeRemaining(deadlineNanos)) {
+            if (!canContinue(deadlineNanos)) {
                 break;
             }
             bestMatch = chooseBetter(
@@ -81,7 +81,7 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
             }
         }
         for (QueryVariant variant : variants) {
-            if (!hasTimeRemaining(deadlineNanos)) {
+            if (!canContinue(deadlineNanos)) {
                 break;
             }
             bestMatch = chooseBetter(
@@ -89,7 +89,7 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
                     fetchBySearch(trackKey, variant, durationMs, deadlineNanos)
             );
         }
-        if (hasTimeRemaining(deadlineNanos)) {
+        if (canContinue(deadlineNanos)) {
             bestMatch = chooseBetter(
                     bestMatch,
                     fetchBySearch(trackKey, titleOnly, durationMs, deadlineNanos)
@@ -124,7 +124,9 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
             }
 
             connection = openConnection(urlBuilder.toString(), deadlineNanos);
-            if (!isSuccess(connection.getResponseCode())) {
+            int responseCode = connection.getResponseCode();
+            recordProviderResponse(connection, responseCode);
+            if (!isSuccess(responseCode)) {
                 return null;
             }
             JSONObject jsonObject = new JSONObject(readString(connection.getInputStream()));
@@ -175,7 +177,9 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
             }
 
             connection = openConnection(urlBuilder.toString(), deadlineNanos);
-            if (!isSuccess(connection.getResponseCode())) {
+            int responseCode = connection.getResponseCode();
+            recordProviderResponse(connection, responseCode);
+            if (!isSuccess(responseCode)) {
                 return null;
             }
 
@@ -215,6 +219,12 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
     }
 
     private HttpURLConnection openConnection(String urlString, long deadlineNanos) throws IOException {
+        if (ProviderCooldownRegistry.isBlocked(baseUrl, System.currentTimeMillis())) {
+            throw new IOException("Lyrics provider is cooling down");
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            throw new IOException("Lyrics request cancelled");
+        }
         URL url = new URL(urlString);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         int remainingTimeoutMs = getRemainingTimeoutMs(deadlineNanos);
@@ -226,8 +236,18 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
         return connection;
     }
 
-    private static boolean hasTimeRemaining(long deadlineNanos) {
-        return System.nanoTime() < deadlineNanos;
+    private void recordProviderResponse(HttpURLConnection connection, int responseCode) {
+        ProviderCooldownRegistry.recordResponse(
+                baseUrl,
+                responseCode,
+                connection.getHeaderField("Retry-After"),
+                System.currentTimeMillis()
+        );
+    }
+
+    private static boolean canContinue(long deadlineNanos) {
+        return !Thread.currentThread().isInterrupted()
+                && System.nanoTime() < deadlineNanos;
     }
 
     private static int getRemainingTimeoutMs(long deadlineNanos) throws SocketTimeoutException {
@@ -368,6 +388,9 @@ public final class PhoneLrcLibClient implements PhoneLyricsProvider {
             char[] buffer = new char[4096];
             int readCount;
             while ((readCount = reader.read(buffer)) != -1) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IOException("Lyrics request cancelled");
+                }
                 if (builder.length() + readCount > MAX_RESPONSE_CHARS) {
                     throw new IOException("Lyrics provider response exceeds size limit");
                 }
