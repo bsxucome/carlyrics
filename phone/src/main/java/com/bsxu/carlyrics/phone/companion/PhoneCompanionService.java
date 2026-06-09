@@ -126,7 +126,7 @@ public class PhoneCompanionService extends NotificationListenerService {
     @Override
     public void onCreate() {
         super.onCreate();
-        lyricsRepository = new PhoneLyricsRepository();
+        lyricsRepository = new PhoneLyricsRepository(this);
         connectionManager = PhoneConnectionManager.getInstance(this);
         connectionManager.setNotificationAccessGranted(hasNotificationAccessConfigured());
         connectionManager.setNotificationListenerActive(false);
@@ -428,7 +428,9 @@ public class PhoneCompanionService extends NotificationListenerService {
         }
         connectionManager.publishSnapshot(snapshot);
         connectionManager.setMediaState(true, true, currentLyricsResult != null);
-        if (trackChanged || shouldRetryLyricsLookup()) {
+        if (trackChanged) {
+            requestLyricsForCurrentTrack(false);
+        } else if (shouldRetryLyricsLookup()) {
             requestLyricsForCurrentTrack(true);
         }
     }

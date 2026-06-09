@@ -84,6 +84,41 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
+            android:text="@string/lyrics_server_title"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/lyricsServerView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="#182738"
+            android:padding="12dp"
+            android:textColor="#DFF4FF"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/configureLyricsServerButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:text="@string/configure_lyrics_server"
+            android:textAllCaps="false" />
+
+        <Button
+            android:id="@+id/resetLyricsServerButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/reset_lyrics_server"
+            android:textAllCaps="false" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
             android:text="@string/how_it_works"
             android:textColor="@android:color/white"
             android:textSize="18sp"

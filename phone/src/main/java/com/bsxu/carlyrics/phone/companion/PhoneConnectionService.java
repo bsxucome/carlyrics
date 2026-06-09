@@ -112,6 +112,9 @@ public class PhoneConnectionService extends Service {
     }
 
     private void requestNotificationListenerRebind() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return;
+        }
         try {
             NotificationListenerService.requestRebind(
                     new ComponentName(this, PhoneCompanionService.class)

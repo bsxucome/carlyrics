@@ -17,12 +17,14 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 
+import com.bsxu.carlyrics.BuildConfig;
 import com.bsxu.carlyrics.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
+import com.bsxu.carlyrics.bridge.LimitedLineReader;
 import com.bsxu.carlyrics.bridge.PingMessage;
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
@@ -464,7 +466,7 @@ public final class HeadUnitCompanionManager {
                         identityStore.getOrCreateLocalAppDeviceId(),
                         BridgeContract.ROLE_HEADUNIT,
                         Build.MODEL == null ? string(R.string.head_unit_device_fallback) : Build.MODEL,
-                        "0.2.0"
+                        BuildConfig.VERSION_NAME
                 )),
                 false
         );
@@ -477,11 +479,17 @@ public final class HeadUnitCompanionManager {
         BufferedReader reader = null;
         try {
             reader = new BufferedReader(new InputStreamReader(expectedSocket.getInputStream(), "UTF-8"));
+            LimitedLineReader lineReader =
+                    new LimitedLineReader(reader, BridgeContract.MAX_MESSAGE_CHARS);
             String line;
-            while (attemptGeneration == connectionGeneration && isCurrentSocket(expectedSocket) && (line = reader.readLine()) != null) {
+            while (attemptGeneration == connectionGeneration
+                    && isCurrentSocket(expectedSocket)
+                    && (line = lineReader.readLine()) != null) {
                 noteInbound();
                 handleIncomingLine(expectedSocket, line);
             }
+        } catch (LimitedLineReader.MessageTooLargeException error) {
+            Log.w(TAG, "Closing connection after oversized bridge message", error);
         } catch (IOException ignored) {
         } finally {
             Log.d(TAG, "readLoop() finished for " + connectedDeviceName + " / " + connectedDeviceAddress);
@@ -836,6 +844,10 @@ public final class HeadUnitCompanionManager {
         if (targetSocket == null || activeWriter == null || TextUtils.isEmpty(line) || !isCurrentSocket(targetSocket)) {
             return false;
         }
+        if (line.length() > BridgeContract.MAX_MESSAGE_CHARS) {
+            Log.w(TAG, "Rejecting oversized outbound bridge message: " + line.length());
+            return false;
+        }
         if (requireHandshake && !handshakeComplete) {
             return false;
         }
@@ -887,6 +899,11 @@ public final class HeadUnitCompanionManager {
     }
 
     private BluetoothSocket connectSocketWithFallback(BluetoothAdapter adapter, BluetoothDevice device) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+            throw new SecurityException("Bluetooth connect permission is required");
+        }
         IOException lastError = null;
         try {
             BluetoothSocket secureSocket = device.createRfcommSocketToServiceRecord(

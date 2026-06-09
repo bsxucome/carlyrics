@@ -26,6 +26,8 @@ This project ships as two Android apps:
 - Artwork, title, artist, package name, and play-state display
 - Previous / play-pause / next controls
 - Auto lyric matching on the phone companion through LRCLIB exact lookup plus search fallback
+- Persistent phone-side lyric cache for faster repeat playback
+- Optional HTTPS LRCLIB-compatible mirror with automatic official-server fallback
 - Synced lyric highlight and auto-scroll
 - Lightweight diagnostics panel for package/source debugging on real head units
 
@@ -66,6 +68,13 @@ There is also a `SHA256SUMS.txt` file and a zip archive containing the same rele
 6. Start music playback on the phone once so the companion can detect the active media session.
 7. Open the head-unit app, tap `Connect phone`, and select the paired phone.
 8. Wait for the phone companion state to become ready, then verify title, artwork, progress, and lyrics appear on the head unit.
+
+### Lyrics network settings
+
+- The phone companion uses `https://lrclib.net` by default.
+- A trusted LRCLIB-compatible HTTPS mirror can be configured from the phone app under `Lyrics network source`.
+- When a mirror is configured, the phone tries it first and falls back to the official LRCLIB server.
+- Successfully matched lyrics are cached on the phone for up to 200 tracks, so repeat playback can display lyrics without waiting for the network.
 
 ## Normal usage
 

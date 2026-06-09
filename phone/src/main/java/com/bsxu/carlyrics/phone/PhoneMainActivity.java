@@ -2,6 +2,7 @@ package com.bsxu.carlyrics.phone;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.res.ColorStateList;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
@@ -15,7 +16,9 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
+import android.text.InputType;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -23,6 +26,7 @@ import android.widget.Toast;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionManager;
 import com.bsxu.carlyrics.phone.companion.PhoneConnectionService;
 import com.bsxu.carlyrics.phone.companion.PhoneCompanionService;
+import com.bsxu.carlyrics.phone.lyrics.PhoneLyricsSettings;
 
 import java.util.ArrayList;
 
@@ -53,6 +57,9 @@ public class PhoneMainActivity extends Activity {
     private Button notificationAccessButton;
     private Button bluetoothPermissionButton;
     private Button resetTrustedHeadUnitButton;
+    private TextView lyricsServerView;
+    private Button configureLyricsServerButton;
+    private Button resetLyricsServerButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,10 +72,15 @@ public class PhoneMainActivity extends Activity {
         notificationAccessButton = (Button) findViewById(R.id.notificationAccessButton);
         bluetoothPermissionButton = (Button) findViewById(R.id.bluetoothPermissionButton);
         resetTrustedHeadUnitButton = (Button) findViewById(R.id.resetTrustedHeadUnitButton);
+        lyricsServerView = (TextView) findViewById(R.id.lyricsServerView);
+        configureLyricsServerButton = (Button) findViewById(R.id.configureLyricsServerButton);
+        resetLyricsServerButton = (Button) findViewById(R.id.resetLyricsServerButton);
 
         notificationAccessButton.setOnClickListener(v -> handleNotificationButtonClick());
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
         resetTrustedHeadUnitButton.setOnClickListener(v -> resetTrustedHeadUnit());
+        configureLyricsServerButton.setOnClickListener(v -> showLyricsServerDialog());
+        resetLyricsServerButton.setOnClickListener(v -> resetLyricsServer());
 
         ensureConnectionServiceRunning();
         refreshConnectionPermissionState();
@@ -128,6 +140,7 @@ public class PhoneMainActivity extends Activity {
 
     private void renderStatus() {
         PhoneConnectionManager connectionManager = PhoneConnectionManager.getInstance(this);
+        PhoneLyricsSettings lyricsSettings = new PhoneLyricsSettings(this);
         boolean notificationAccess = hasNotificationAccess();
         boolean bluetoothGranted = hasBluetoothPermission();
         boolean listenerActive = connectionManager.isNotificationListenerActive();
@@ -166,6 +179,13 @@ public class PhoneMainActivity extends Activity {
                 ? android.view.View.VISIBLE
                 : android.view.View.GONE);
         resetTrustedHeadUnitButton.setEnabled(hasTrustedHeadUnit);
+        lyricsServerView.setText(getString(
+                R.string.lyrics_server_current,
+                lyricsSettings.getDisplayBaseUrl()
+        ));
+        resetLyricsServerButton.setEnabled(
+                !TextUtils.isEmpty(lyricsSettings.getCustomLrcLibBaseUrl())
+        );
 
         updateRecommendedAction(
                 notificationAccess,
@@ -219,6 +239,54 @@ public class PhoneMainActivity extends Activity {
         PhoneConnectionManager.getInstance(this).resetTrustedHeadUnit();
         renderStatus();
         Toast.makeText(this, R.string.trusted_head_unit_reset, Toast.LENGTH_SHORT).show();
+    }
+
+    private void showLyricsServerDialog() {
+        final PhoneLyricsSettings settings = new PhoneLyricsSettings(this);
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint(PhoneLyricsSettings.OFFICIAL_LRCLIB_BASE_URL);
+        input.setText(settings.getCustomLrcLibBaseUrl());
+        int padding = Math.round(20f * getResources().getDisplayMetrics().density);
+        LinearLayout inputContainer = new LinearLayout(this);
+        inputContainer.setPadding(padding, 0, padding, 0);
+        inputContainer.addView(
+                input,
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+        );
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.configure_lyrics_server)
+                .setMessage(R.string.lyrics_server_dialog_message)
+                .setView(inputContainer)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.save_lyrics_server, null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    if (!settings.setCustomLrcLibBaseUrl(input.getText().toString())) {
+                        input.setError(getString(R.string.lyrics_server_invalid));
+                        return;
+                    }
+                    dialog.dismiss();
+                    renderStatus();
+                    Toast.makeText(
+                            PhoneMainActivity.this,
+                            R.string.lyrics_server_saved,
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }));
+        dialog.show();
+    }
+
+    private void resetLyricsServer() {
+        new PhoneLyricsSettings(this).clearCustomLrcLibBaseUrl();
+        renderStatus();
+        Toast.makeText(this, R.string.lyrics_server_reset, Toast.LENGTH_SHORT).show();
     }
 
     private void updateRecommendedAction(

@@ -37,4 +37,13 @@
     <string name="recommended_reset_trusted_head_unit">推荐下一步：重置受信任车机，然后回到车机端重新连接。</string>
     <string name="how_it_works">使用说明</string>
     <string name="how_it_works_desc">1. 开启通知访问，让应用读取当前音乐会话。\n2. 打开蓝牙并将手机与车机完成配对。\n3. 在车机端应用里连接这台手机。\n4. 在手机上开始播放音乐，助手会通过蓝牙同步封面、进度和歌词。</string>
+    <string name="lyrics_server_title">歌词网络来源</string>
+    <string name="lyrics_server_current">当前服务器：%1$s</string>
+    <string name="configure_lyrics_server">配置 LRCLIB 镜像</string>
+    <string name="reset_lyrics_server">使用 LRCLIB 官方服务器</string>
+    <string name="lyrics_server_dialog_message">请输入可信的 LRCLIB 兼容服务器根地址。应用会优先查询镜像，失败后再查询官方服务器。</string>
+    <string name="save_lyrics_server">保存</string>
+    <string name="lyrics_server_invalid">请输入有效的 HTTPS 地址。</string>
+    <string name="lyrics_server_saved">歌词服务器已保存</string>
+    <string name="lyrics_server_reset">已恢复 LRCLIB 官方服务器</string>
 </resources>

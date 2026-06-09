@@ -17,12 +17,14 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 
+import com.bsxu.carlyrics.phone.BuildConfig;
 import com.bsxu.carlyrics.phone.R;
 import com.bsxu.carlyrics.bridge.BridgeCodec;
 import com.bsxu.carlyrics.bridge.BridgeContract;
 import com.bsxu.carlyrics.bridge.ControlMessage;
 import com.bsxu.carlyrics.bridge.DecodedMessage;
 import com.bsxu.carlyrics.bridge.HelloMessage;
+import com.bsxu.carlyrics.bridge.LimitedLineReader;
 import com.bsxu.carlyrics.bridge.PingMessage;
 import com.bsxu.carlyrics.bridge.RemoteLyricsPayload;
 import com.bsxu.carlyrics.bridge.RemotePlaybackPayload;
@@ -338,7 +340,9 @@ public final class PhoneConnectionManager {
     }
 
     private void startBluetoothServer() {
-        if (!hasBluetoothPermission()) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
             updateUiStatus(appContext.getString(R.string.status_bluetooth_missing_runtime));
             return;
         }
@@ -457,9 +461,7 @@ public final class PhoneConnectionManager {
             closeSocketQuietly(clientSocket);
             clearClientSessionLocked();
             clientSocket = acceptedSocket;
-            connectedClientName = safeName(acceptedSocket.getRemoteDevice() == null
-                    ? ""
-                    : acceptedSocket.getRemoteDevice().getName());
+            connectedClientName = safeName(readRemoteDeviceName(acceptedSocket));
             handshakeStartedElapsedMs = SystemClock.elapsedRealtime();
             lastInboundElapsedMs = handshakeStartedElapsedMs;
             lastOutboundElapsedMs = 0L;
@@ -503,7 +505,7 @@ public final class PhoneConnectionManager {
                         identityStore.getOrCreateLocalAppDeviceId(),
                         BridgeContract.ROLE_PHONE,
                         safeName(Build.MODEL),
-                        "0.2.0"
+                        BuildConfig.VERSION_NAME
                 )),
                 false
         );
@@ -517,13 +519,17 @@ public final class PhoneConnectionManager {
         BufferedReader reader = null;
         try {
             reader = new BufferedReader(new InputStreamReader(activeSocket.getInputStream(), "UTF-8"));
+            LimitedLineReader lineReader =
+                    new LimitedLineReader(reader, BridgeContract.MAX_MESSAGE_CHARS);
             String line;
             while (sessionGeneration == connectionGeneration
                     && isCurrentClientSocket(activeSocket)
-                    && (line = reader.readLine()) != null) {
+                    && (line = lineReader.readLine()) != null) {
                 noteInbound();
                 handleIncomingLine(activeSocket, line);
             }
+        } catch (LimitedLineReader.MessageTooLargeException error) {
+            Log.w(TAG, "Closing connection after oversized bridge message", error);
         } catch (IOException ignored) {
         } finally {
             Log.d(TAG, "readLoop() finished for " + sessionClientName);
@@ -797,6 +803,10 @@ public final class PhoneConnectionManager {
         if (targetSocket == null || activeWriter == null || TextUtils.isEmpty(line) || !isCurrentClientSocket(targetSocket)) {
             return false;
         }
+        if (line.length() > BridgeContract.MAX_MESSAGE_CHARS) {
+            Log.w(TAG, "Rejecting oversized outbound bridge message: " + line.length());
+            return false;
+        }
         if (requireHandshake && !handshakeComplete) {
             return false;
         }
@@ -842,6 +852,24 @@ public final class PhoneConnectionManager {
         }
         return appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
                 == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private String readRemoteDeviceName(BluetoothSocket bluetoothSocket) {
+        if (bluetoothSocket == null) {
+            return "";
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+            return "";
+        }
+        try {
+            return bluetoothSocket.getRemoteDevice() == null
+                    ? ""
+                    : bluetoothSocket.getRemoteDevice().getName();
+        } catch (SecurityException ignored) {
+            return "";
+        }
     }
 
     private boolean closeCurrentClientConnection(BluetoothSocket expectedSocket, boolean updateReadyStatus) {

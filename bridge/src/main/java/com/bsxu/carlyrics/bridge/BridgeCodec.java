@@ -102,6 +102,12 @@ public final class BridgeCodec {
     }
 
     public static DecodedMessage decode(String line) throws JSONException {
+        if (line == null) {
+            throw new JSONException("Message must not be null");
+        }
+        if (line.length() > BridgeContract.MAX_MESSAGE_CHARS) {
+            throw new JSONException("Message exceeds protocol size limit");
+        }
         JSONObject object = new JSONObject(line);
         String type = object.optString("type", "");
         if (BridgeContract.TYPE_HELLO.equals(type)) {

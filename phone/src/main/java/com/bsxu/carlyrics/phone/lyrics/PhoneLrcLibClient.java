@@ -4,6 +4,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.bsxu.carlyrics.bridge.RemoteLyricLine;
+import com.bsxu.carlyrics.phone.BuildConfig;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.security.GeneralSecurityException;
@@ -29,13 +31,13 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.X509TrustManager;
 
-public final class PhoneLrcLibClient {
+public final class PhoneLrcLibClient implements PhoneLyricsProvider {
 
     private static final String TAG = "PhoneLrcLib";
-    private static final String GET_URL = "https://lrclib.net/api/get";
-    private static final String SEARCH_URL = "https://lrclib.net/api/search";
     private static final String LRCLIB_HOST = "lrclib.net";
-    private static final String USER_AGENT = "CarLyricsPhoneCompanion/0.1";
+    private static final String USER_AGENT =
+            "CarLyricsPhoneCompanion/" + BuildConfig.VERSION_NAME
+                    + " (https://github.com/bsxucome/carlyrics)";
     private static final AtomicBoolean insecureTlsLogPrinted = new AtomicBoolean(false);
     private static final SSLSocketFactory INSECURE_SSL_SOCKET_FACTORY = buildInsecureSocketFactory();
     private static final HostnameVerifier INSECURE_HOSTNAME_VERIFIER = new HostnameVerifier() {
@@ -45,7 +47,25 @@ public final class PhoneLrcLibClient {
         }
     };
 
-    public PhoneLyricsResult fetch(String trackKey, String title, String artist, String album, long durationMs) {
+    private final String baseUrl;
+    private final String sourceLabel;
+
+    public PhoneLrcLibClient(String baseUrl, String sourceLabel) {
+        this.baseUrl = baseUrl;
+        this.sourceLabel = isBlank(sourceLabel) ? "LRCLIB" : sourceLabel.trim();
+    }
+
+    @Override
+    public PhoneLyricsResult fetch(
+            String trackKey,
+            String title,
+            String artist,
+            String album,
+            long durationMs,
+            long timeoutMs
+    ) {
+        long safeTimeoutMs = Math.max(1000L, timeoutMs);
+        long deadlineNanos = System.nanoTime() + safeTimeoutMs * 1_000_000L;
         QueryVariant primary = new QueryVariant(title, artist, album);
         QueryVariant cleaned = primary.toCleanedVariant();
         QueryVariant primaryFirstArtist = primary.toFirstArtistVariant();
@@ -56,21 +76,44 @@ public final class PhoneLrcLibClient {
         CandidateMatch bestMatch = null;
 
         for (QueryVariant variant : variants) {
-            bestMatch = chooseBetter(bestMatch, fetchExactMatch(trackKey, variant, durationMs, true, true));
+            if (!hasTimeRemaining(deadlineNanos)) {
+                break;
+            }
+            bestMatch = chooseBetter(
+                    bestMatch,
+                    fetchExactMatch(trackKey, variant, durationMs, true, true, deadlineNanos)
+            );
             if (isStrongSyncedWinner(bestMatch)) {
                 return bestMatch.result;
             }
         }
         for (QueryVariant variant : variants) {
-            bestMatch = chooseBetter(bestMatch, fetchExactMatch(trackKey, variant, durationMs, false, false));
+            if (!hasTimeRemaining(deadlineNanos)) {
+                break;
+            }
+            bestMatch = chooseBetter(
+                    bestMatch,
+                    fetchExactMatch(trackKey, variant, durationMs, false, false, deadlineNanos)
+            );
             if (isStrongSyncedWinner(bestMatch)) {
                 return bestMatch.result;
             }
         }
         for (QueryVariant variant : variants) {
-            bestMatch = chooseBetter(bestMatch, fetchBySearch(trackKey, variant, durationMs));
+            if (!hasTimeRemaining(deadlineNanos)) {
+                break;
+            }
+            bestMatch = chooseBetter(
+                    bestMatch,
+                    fetchBySearch(trackKey, variant, durationMs, deadlineNanos)
+            );
         }
-        bestMatch = chooseBetter(bestMatch, fetchBySearch(trackKey, titleOnly, durationMs));
+        if (hasTimeRemaining(deadlineNanos)) {
+            bestMatch = chooseBetter(
+                    bestMatch,
+                    fetchBySearch(trackKey, titleOnly, durationMs, deadlineNanos)
+            );
+        }
         return bestMatch == null ? null : bestMatch.result;
     }
 
@@ -79,7 +122,8 @@ public final class PhoneLrcLibClient {
             QueryVariant queryVariant,
             long durationMs,
             boolean includeAlbum,
-            boolean includeDuration
+            boolean includeDuration,
+            long deadlineNanos
     ) {
         if (!queryVariant.canLookupExactly()) {
             return null;
@@ -87,7 +131,8 @@ public final class PhoneLrcLibClient {
 
         HttpURLConnection connection = null;
         try {
-            StringBuilder urlBuilder = new StringBuilder(GET_URL)
+            StringBuilder urlBuilder = new StringBuilder(baseUrl)
+                    .append("/api/get")
                     .append("?track_name=").append(encode(queryVariant.title))
                     .append("&artist_name=").append(encode(queryVariant.artist));
             if (includeAlbum && !isBlank(queryVariant.album)) {
@@ -97,12 +142,16 @@ public final class PhoneLrcLibClient {
                 urlBuilder.append("&duration=").append(durationMs / 1000L);
             }
 
-            connection = openConnection(urlBuilder.toString());
+            connection = openConnection(urlBuilder.toString(), deadlineNanos);
             if (!isSuccess(connection.getResponseCode())) {
                 return null;
             }
             JSONObject jsonObject = new JSONObject(readString(connection.getInputStream()));
-            PhoneLyricsResult parsedResult = parseLyricsResult(trackKey, jsonObject, "LRCLIB exact");
+            PhoneLyricsResult parsedResult = parseLyricsResult(
+                    trackKey,
+                    jsonObject,
+                    sourceLabel + " exact"
+            );
             if (parsedResult == null) {
                 return null;
             }
@@ -122,14 +171,20 @@ public final class PhoneLrcLibClient {
         }
     }
 
-    private CandidateMatch fetchBySearch(String trackKey, QueryVariant queryVariant, long durationMs) {
+    private CandidateMatch fetchBySearch(
+            String trackKey,
+            QueryVariant queryVariant,
+            long durationMs,
+            long deadlineNanos
+    ) {
         if (!queryVariant.canSearch()) {
             return null;
         }
 
         HttpURLConnection connection = null;
         try {
-            StringBuilder urlBuilder = new StringBuilder(SEARCH_URL)
+            StringBuilder urlBuilder = new StringBuilder(baseUrl)
+                    .append("/api/search")
                     .append("?track_name=").append(encode(queryVariant.title));
             if (!isBlank(queryVariant.artist)) {
                 urlBuilder.append("&artist_name=").append(encode(queryVariant.artist));
@@ -138,7 +193,7 @@ public final class PhoneLrcLibClient {
                 urlBuilder.append("&album_name=").append(encode(queryVariant.album));
             }
 
-            connection = openConnection(urlBuilder.toString());
+            connection = openConnection(urlBuilder.toString(), deadlineNanos);
             if (!isSuccess(connection.getResponseCode())) {
                 return null;
             }
@@ -150,7 +205,11 @@ public final class PhoneLrcLibClient {
                 if (candidate == null) {
                     continue;
                 }
-                PhoneLyricsResult parsedResult = parseLyricsResult(trackKey, candidate, "LRCLIB search");
+                PhoneLyricsResult parsedResult = parseLyricsResult(
+                        trackKey,
+                        candidate,
+                        sourceLabel + " search"
+                );
                 if (parsedResult == null) {
                     continue;
                 }
@@ -173,16 +232,30 @@ public final class PhoneLrcLibClient {
         }
     }
 
-    private HttpURLConnection openConnection(String urlString) throws IOException {
+    private HttpURLConnection openConnection(String urlString, long deadlineNanos) throws IOException {
         URL url = new URL(urlString);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        int remainingTimeoutMs = getRemainingTimeoutMs(deadlineNanos);
         connection.setRequestMethod("GET");
-        connection.setConnectTimeout(4000);
-        connection.setReadTimeout(4000);
+        connection.setConnectTimeout(Math.min(2500, remainingTimeoutMs));
+        connection.setReadTimeout(Math.min(2500, remainingTimeoutMs));
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("User-Agent", USER_AGENT);
         maybeAllowInsecureTls(url, connection);
         return connection;
+    }
+
+    private static boolean hasTimeRemaining(long deadlineNanos) {
+        return System.nanoTime() < deadlineNanos;
+    }
+
+    private static int getRemainingTimeoutMs(long deadlineNanos) throws SocketTimeoutException {
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        if (remainingNanos <= 0L) {
+            throw new SocketTimeoutException("Lyrics provider time budget exhausted");
+        }
+        long remainingMs = Math.max(1L, remainingNanos / 1_000_000L);
+        return (int) Math.min(Integer.MAX_VALUE, remainingMs);
     }
 
     private void maybeAllowInsecureTls(URL url, HttpURLConnection connection) {

@@ -4,12 +4,16 @@ android {
     namespace "com.bsxu.carlyrics"
     compileSdk 34
 
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId "com.bsxu.carlyrics"
         minSdk 21
         targetSdk 34
-        versionCode 15
-        versionName "0.2.12"
+        versionCode 16
+        versionName "0.3.0"
     }
 
     buildTypes {
