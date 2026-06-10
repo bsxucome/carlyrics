@@ -42,6 +42,7 @@ public class PhoneMainActivity extends ComponentActivity {
     private static final int ACTION_PRIMARY_TEXT = 0xFFFFFFFF;
     private static final int ACTION_SECONDARY_TEXT = 0xFFE2F5FF;
     private static final long STATUS_REFRESH_INTERVAL_MS = 1000L;
+    private static final long RECOVERY_STATUS_REFRESH_INTERVAL_MS = 250L;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final ActivityResultLauncher<String> bluetoothPermissionLauncher =
@@ -49,7 +50,7 @@ public class PhoneMainActivity extends ComponentActivity {
                     new ActivityResultContracts.RequestPermission(),
                     granted -> {
                         if (granted) {
-                            ensureConnectionServiceRunning();
+                            ensureConnectionServiceRunning(true);
                         }
                         refreshConnectionPermissionState();
                         renderStatus();
@@ -66,7 +67,15 @@ public class PhoneMainActivity extends ComponentActivity {
         public void run() {
             refreshConnectionPermissionState();
             renderStatus();
-            uiHandler.postDelayed(this, STATUS_REFRESH_INTERVAL_MS);
+            boolean listenerRecoveryPending = hasNotificationAccess()
+                    && !PhoneConnectionManager.getInstance(PhoneMainActivity.this)
+                    .isNotificationListenerActive();
+            uiHandler.postDelayed(
+                    this,
+                    listenerRecoveryPending
+                            ? RECOVERY_STATUS_REFRESH_INTERVAL_MS
+                            : STATUS_REFRESH_INTERVAL_MS
+            );
         }
     };
 
@@ -79,6 +88,7 @@ public class PhoneMainActivity extends ComponentActivity {
     private TextView lyricsServerView;
     private Button configureLyricsServerButton;
     private Button resetLyricsServerButton;
+    private boolean fastListenerRecoveryRequested;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,7 +111,7 @@ public class PhoneMainActivity extends ComponentActivity {
         configureLyricsServerButton.setOnClickListener(v -> showLyricsServerDialog());
         resetLyricsServerButton.setOnClickListener(v -> resetLyricsServer());
 
-        ensureConnectionServiceRunningIfPermitted();
+        ensureConnectionServiceRunningIfPermitted(true);
         requestNotificationPermissionIfNeeded();
         refreshConnectionPermissionState();
         renderStatus();
@@ -111,12 +121,7 @@ public class PhoneMainActivity extends ComponentActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (hasNotificationAccess() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            NotificationListenerService.requestRebind(
-                    new ComponentName(this, PhoneCompanionService.class)
-            );
-        }
-        ensureConnectionServiceRunningIfPermitted();
+        ensureConnectionServiceRunningIfPermitted(true);
         refreshConnectionPermissionState();
         renderStatus();
         startStatusRefreshTicker();
@@ -240,8 +245,15 @@ public class PhoneMainActivity extends ComponentActivity {
         return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private void ensureConnectionServiceRunning() {
+    private void ensureConnectionServiceRunning(boolean requestFastListenerRecovery) {
         Intent serviceIntent = new Intent(this, PhoneConnectionService.class);
+        if (requestFastListenerRecovery
+                && !fastListenerRecoveryRequested
+                && hasNotificationAccess()
+                && !PhoneConnectionManager.getInstance(this).isNotificationListenerActive()) {
+            serviceIntent.setAction(PhoneConnectionService.ACTION_FAST_RECOVER_LISTENER);
+            fastListenerRecoveryRequested = true;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
             return;
@@ -249,9 +261,9 @@ public class PhoneMainActivity extends ComponentActivity {
         startService(serviceIntent);
     }
 
-    private void ensureConnectionServiceRunningIfPermitted() {
+    private void ensureConnectionServiceRunningIfPermitted(boolean requestFastListenerRecovery) {
         if (hasBluetoothPermission()) {
-            ensureConnectionServiceRunning();
+            ensureConnectionServiceRunning(requestFastListenerRecovery);
         }
     }
 

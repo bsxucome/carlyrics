@@ -26,10 +26,13 @@ public class PhoneConnectionService extends Service {
     private static final String TAG = "PhoneConnService";
     public static final String ACTION_FORCE_RECOVER_LISTENER =
             "com.bsxu.carlyrics.phone.action.FORCE_RECOVER_LISTENER";
+    public static final String ACTION_FAST_RECOVER_LISTENER =
+            "com.bsxu.carlyrics.phone.action.FAST_RECOVER_LISTENER";
     private static final String CHANNEL_ID = "phone_connection_service";
     private static final int NOTIFICATION_ID = 2001;
-    private static final long LISTENER_WATCHDOG_INTERVAL_MS = 5000L;
+    private static final long LISTENER_WATCHDOG_INTERVAL_MS = 30000L;
     private static final int LISTENER_REBIND_REPAIR_THRESHOLD = 3;
+    private static final long FAST_RECOVERY_GRACE_MS = 1200L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private int notificationListenerRecoveryAttempts;
@@ -40,6 +43,17 @@ public class PhoneConnectionService extends Service {
                 ensureNotificationListenerBound();
             } finally {
                 mainHandler.postDelayed(this, LISTENER_WATCHDOG_INTERVAL_MS);
+            }
+        }
+    };
+    private final Runnable fastListenerRecovery = new Runnable() {
+        @Override
+        public void run() {
+            PhoneConnectionManager connectionManager =
+                    PhoneConnectionManager.getInstance(PhoneConnectionService.this);
+            if (hasNotificationAccessConfigured()
+                    && !connectionManager.isNotificationListenerActive()) {
+                forceNotificationListenerRepair();
             }
         }
     };
@@ -70,6 +84,9 @@ public class PhoneConnectionService extends Service {
         PhoneConnectionManager.getInstance(this).start();
         if (intent != null && ACTION_FORCE_RECOVER_LISTENER.equals(intent.getAction())) {
             forceNotificationListenerRepair();
+        } else if (intent != null
+                && ACTION_FAST_RECOVER_LISTENER.equals(intent.getAction())) {
+            startFastListenerRecovery();
         }
         startNotificationListenerWatchdog();
         return START_STICKY;
@@ -78,6 +95,7 @@ public class PhoneConnectionService extends Service {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacks(notificationListenerWatchdog);
+        mainHandler.removeCallbacks(fastListenerRecovery);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } else {
@@ -95,6 +113,12 @@ public class PhoneConnectionService extends Service {
     private void startNotificationListenerWatchdog() {
         mainHandler.removeCallbacks(notificationListenerWatchdog);
         mainHandler.post(notificationListenerWatchdog);
+    }
+
+    private void startFastListenerRecovery() {
+        mainHandler.removeCallbacks(fastListenerRecovery);
+        requestNotificationListenerRebind();
+        mainHandler.postDelayed(fastListenerRecovery, FAST_RECOVERY_GRACE_MS);
     }
 
     private boolean hasBluetoothPermission() {
