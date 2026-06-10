@@ -60,7 +60,7 @@ public final class PhoneConnectionManager {
 
         void onPreviousRequested();
 
-        void onResendLyricsRequested();
+        void onRefreshLyricsRequested();
     }
 
     private static volatile PhoneConnectionManager instance;
@@ -679,8 +679,8 @@ public final class PhoneConnectionManager {
             delegate.onPreviousRequested();
             return;
         }
-        if (BridgeContract.ACTION_RESEND_LYRICS.equals(message.action)) {
-            delegate.onResendLyricsRequested();
+        if (BridgeContract.ACTION_REFRESH_LYRICS.equals(message.action)) {
+            delegate.onRefreshLyricsRequested();
         }
     }
 

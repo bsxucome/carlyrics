@@ -14,7 +14,7 @@
     <string name="play">播放</string>
     <string name="pause">暂停</string>
     <string name="next">下一首</string>
-    <string name="retry_lyrics">重新同步</string>
+    <string name="retry_lyrics">重新获取歌词</string>
     <string name="lyrics_waiting_remote">等待手机助手发送歌词…</string>
     <string name="lyrics_no_displayable_lines">当前歌曲没有可显示的歌词</string>
     <string name="lyrics_status_prefix">歌词状态：</string>

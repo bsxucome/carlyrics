@@ -25,7 +25,7 @@ public final class BridgeContract {
     public static final String ACTION_NEXT = "next";
     public static final String ACTION_PREVIOUS = "previous";
     public static final String ACTION_RESEND_STATE = "resend_state";
-    public static final String ACTION_RESEND_LYRICS = "resend_lyrics";
+    public static final String ACTION_REFRESH_LYRICS = "resend_lyrics";
 
     public static boolean isProtocolSupported(int protocolVersion) {
         return protocolVersion >= MIN_SUPPORTED_PROTOCOL_VERSION

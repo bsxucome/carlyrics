@@ -92,12 +92,8 @@ public class PhoneCompanionService extends NotificationListenerService {
                 }
 
                 @Override
-                public void onResendLyricsRequested() {
-                    if (currentLyricsResult != null) {
-                        connectionManager.publishLyrics(currentLyricsResult);
-                    } else {
-                        requestLyricsForCurrentTrack(true);
-                    }
+                public void onRefreshLyricsRequested() {
+                    requestLyricsForCurrentTrack(true);
                 }
             };
 

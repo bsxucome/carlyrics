@@ -182,14 +182,11 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
         retryLyricsButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (currentSession != null && currentSession.isConnected()) {
-                    companionManager.sendControl(
-                            currentSession.hasTrackData()
-                                    ? BridgeContract.ACTION_RESEND_LYRICS
-                                    : BridgeContract.ACTION_RESEND_STATE
-                    );
-                } else {
-                    beginConnectionFlow();
+                if (currentSession != null
+                        && currentSession.isConnected()
+                        && currentSession.hasTrackData()
+                        && !hasCurrentLyricsPayload()) {
+                    companionManager.sendControl(BridgeContract.ACTION_REFRESH_LYRICS);
                 }
             }
         });
@@ -662,19 +659,23 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
 
     private void updateActionButtons(HeadUnitSessionSnapshot snapshot) {
         boolean connected = snapshot != null && snapshot.isConnected();
-        boolean hasTrack = snapshot != null && snapshot.hasTrackData();
+        boolean canRefreshLyrics = connected
+                && snapshot.hasTrackData()
+                && (snapshot.lyricsPayload == null
+                || !TextUtils.equals(snapshot.lyricsPayload.trackKey, currentTrackKey));
 
         previousButton.setEnabled(connected);
         playPauseButton.setEnabled(connected);
         nextButton.setEnabled(connected);
-        retryLyricsButton.setEnabled(connected);
+        retryLyricsButton.setEnabled(canRefreshLyrics);
+        retryLyricsButton.setVisibility(canRefreshLyrics ? View.VISIBLE : View.GONE);
         disconnectButton.setEnabled(connected);
         disconnectButton.setVisibility(connected ? View.VISIBLE : View.GONE);
 
         previousButton.setAlpha(connected ? 1f : 0.45f);
         playPauseButton.setAlpha(connected ? 1f : 0.45f);
         nextButton.setAlpha(connected ? 1f : 0.45f);
-        retryLyricsButton.setAlpha(connected ? 1f : 0.55f);
+        retryLyricsButton.setAlpha(canRefreshLyrics ? 1f : 0.55f);
         disconnectButton.setAlpha(connected ? 1f : 0.55f);
     }
 
