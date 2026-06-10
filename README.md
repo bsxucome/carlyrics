@@ -74,6 +74,7 @@ There is also a `SHA256SUMS.txt` file and a zip archive containing the same rele
 - The phone companion uses `https://lrclib.net` by default.
 - A trusted LRCLIB-compatible HTTPS mirror can be configured from the phone app under `Lyrics network source`.
 - When a mirror is configured, the phone tries it first and falls back to the official LRCLIB server.
+- The project-owned Worker can be entered manually as `https://carlyrics-lrclib-proxy.bsxu579.workers.dev`.
 - Successfully matched lyrics are cached on the phone for up to 200 tracks, so repeat playback can display lyrics without waiting for the network.
 
 ## Normal usage
