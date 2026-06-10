@@ -10,7 +10,8 @@
     <string name="status_bluetooth_missing">状态：附近设备（蓝牙）权限尚未开启</string>
     <string name="status_waiting_notification_access">状态：等待通知访问</string>
     <string name="status_notification_disconnected">状态：通知访问已断开</string>
-    <string name="status_notification_listener_inactive">状态：通知访问已授予，但监听器未激活，请点击下方修复。</string>
+    <string name="status_notification_listener_recovering">状态：正在自动恢复通知监听器</string>
+    <string name="status_notification_listener_inactive">状态：自动恢复未完成，请点击下方手动修复。</string>
     <string name="status_bluetooth_missing_runtime">状态：缺少附近设备（蓝牙）权限</string>
     <string name="status_bluetooth_not_available">状态：当前设备不支持蓝牙</string>
     <string name="status_turn_on_bluetooth">状态：请先打开蓝牙，然后等待车机连接</string>

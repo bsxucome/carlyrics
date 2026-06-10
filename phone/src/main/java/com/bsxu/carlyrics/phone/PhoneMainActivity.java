@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.text.TextUtils;
@@ -43,6 +44,7 @@ public class PhoneMainActivity extends ComponentActivity {
     private static final int ACTION_SECONDARY_TEXT = 0xFFE2F5FF;
     private static final long STATUS_REFRESH_INTERVAL_MS = 1000L;
     private static final long RECOVERY_STATUS_REFRESH_INTERVAL_MS = 250L;
+    private static final long AUTOMATIC_RECOVERY_UI_GRACE_MS = 5000L;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final ActivityResultLauncher<String> bluetoothPermissionLauncher =
@@ -69,7 +71,10 @@ public class PhoneMainActivity extends ComponentActivity {
             renderStatus();
             boolean listenerRecoveryPending = hasNotificationAccess()
                     && !PhoneConnectionManager.getInstance(PhoneMainActivity.this)
-                    .isNotificationListenerActive();
+                    .isNotificationListenerActive()
+                    && automaticRecoveryStartedElapsedMs > 0L
+                    && SystemClock.elapsedRealtime() - automaticRecoveryStartedElapsedMs
+                    < AUTOMATIC_RECOVERY_UI_GRACE_MS;
             uiHandler.postDelayed(
                     this,
                     listenerRecoveryPending
@@ -89,6 +94,7 @@ public class PhoneMainActivity extends ComponentActivity {
     private Button configureLyricsServerButton;
     private Button resetLyricsServerButton;
     private boolean fastListenerRecoveryRequested;
+    private long automaticRecoveryStartedElapsedMs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -168,6 +174,15 @@ public class PhoneMainActivity extends ComponentActivity {
         boolean bluetoothGranted = hasBluetoothPermission();
         boolean listenerActive = connectionManager.isNotificationListenerActive();
         boolean trustedMismatch = connectionManager.isTrustedHeadUnitMismatchPending();
+        if (listenerActive) {
+            fastListenerRecoveryRequested = false;
+            automaticRecoveryStartedElapsedMs = 0L;
+        }
+        boolean listenerRecoveryInProgress = notificationAccess
+                && !listenerActive
+                && automaticRecoveryStartedElapsedMs > 0L
+                && SystemClock.elapsedRealtime() - automaticRecoveryStartedElapsedMs
+                < AUTOMATIC_RECOVERY_UI_GRACE_MS;
 
         if (!notificationAccess) {
             statusView.setText(R.string.status_permission_missing);
@@ -175,6 +190,8 @@ public class PhoneMainActivity extends ComponentActivity {
             statusView.setText(R.string.status_trusted_head_unit_mismatch);
         } else if (!bluetoothGranted) {
             statusView.setText(R.string.status_bluetooth_missing);
+        } else if (listenerRecoveryInProgress) {
+            statusView.setText(R.string.status_notification_listener_recovering);
         } else if (!listenerActive) {
             statusView.setText(R.string.status_notification_listener_inactive);
         } else {
@@ -184,7 +201,8 @@ public class PhoneMainActivity extends ComponentActivity {
                     : serviceStatus);
         }
 
-        boolean showNotificationButton = !notificationAccess || !listenerActive;
+        boolean showNotificationButton = !notificationAccess
+                || (!listenerActive && !listenerRecoveryInProgress);
         notificationAccessButton.setVisibility(showNotificationButton
                 ? android.view.View.VISIBLE
                 : android.view.View.GONE);
@@ -215,7 +233,8 @@ public class PhoneMainActivity extends ComponentActivity {
                 listenerActive,
                 bluetoothGranted,
                 hasTrustedHeadUnit,
-                trustedMismatch
+                trustedMismatch,
+                listenerRecoveryInProgress
         );
     }
 
@@ -253,6 +272,7 @@ public class PhoneMainActivity extends ComponentActivity {
                 && !PhoneConnectionManager.getInstance(this).isNotificationListenerActive()) {
             serviceIntent.setAction(PhoneConnectionService.ACTION_FAST_RECOVER_LISTENER);
             fastListenerRecoveryRequested = true;
+            automaticRecoveryStartedElapsedMs = SystemClock.elapsedRealtime();
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
@@ -330,7 +350,8 @@ public class PhoneMainActivity extends ComponentActivity {
             boolean listenerActive,
             boolean bluetoothGranted,
             boolean hasTrustedHeadUnit,
-            boolean trustedMismatch
+            boolean trustedMismatch,
+            boolean listenerRecoveryInProgress
     ) {
         Button primaryButton = null;
         int hintResId = 0;
@@ -341,7 +362,7 @@ public class PhoneMainActivity extends ComponentActivity {
         } else if (!notificationAccess) {
             primaryButton = notificationAccessButton;
             hintResId = R.string.recommended_open_notification_access;
-        } else if (!listenerActive) {
+        } else if (!listenerActive && !listenerRecoveryInProgress) {
             primaryButton = notificationAccessButton;
             hintResId = R.string.recommended_repair_notification_listener;
         } else if (!bluetoothGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

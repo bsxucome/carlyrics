@@ -10,7 +10,8 @@
     <string name="status_bluetooth_missing">Status: nearby devices (Bluetooth) permission is still disabled</string>
     <string name="status_waiting_notification_access">Status: waiting for notification access</string>
     <string name="status_notification_disconnected">Status: notification access disconnected</string>
-    <string name="status_notification_listener_inactive">Status: notification access is granted, but the listener is inactive. Repair it below.</string>
+    <string name="status_notification_listener_recovering">Status: restoring the notification listener automatically</string>
+    <string name="status_notification_listener_inactive">Status: automatic listener recovery did not finish. Repair it below.</string>
     <string name="status_bluetooth_missing_runtime">Status: nearby devices (Bluetooth) permission is missing</string>
     <string name="status_bluetooth_not_available">Status: Bluetooth is not available</string>
     <string name="status_turn_on_bluetooth">Status: turn Bluetooth on, then wait for the head unit</string>
