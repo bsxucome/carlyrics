@@ -48,4 +48,8 @@
     <string name="lyrics_server_reset">Official LRCLIB server restored</string>
     <string name="how_it_works">How this companion works</string>
     <string name="how_it_works_desc">1. Enable notification access so the app can see the current music session.\n2. Keep Bluetooth on and pair the phone with the head unit.\n3. Open the head-unit app and connect to this phone.\n4. Start music playback on the phone. The companion will stream artwork, progress, and lyrics over Bluetooth.</string>
+    <string name="about_software">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_project">GitHub project: github.com/bsxucome/carlyrics</string>
+    <string name="open_github">Open GitHub</string>
 </resources>

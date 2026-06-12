@@ -82,7 +82,7 @@ There is also a `SHA256SUMS.txt` file and a zip archive containing the same rele
 - Keep the phone companion installed on the same phone you use for music playback
 - Keep Bluetooth enabled on both devices
 - Launch the phone companion after reboot if your device aggressively stops background services
-- The head-unit app does not scan the local media session or fetch lyrics by itself; if the phone companion is not connected, the head unit is intentionally render-only
+- When connected to the phone but no lyrics arrive, an online head unit can use LRCLIB as a delayed fallback; the phone companion remains the preferred source
 - Use the diagnostics panel on the head unit if metadata or lyrics do not appear as expected
 
 ## Upgrade notes

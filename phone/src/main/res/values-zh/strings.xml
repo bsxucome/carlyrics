@@ -48,4 +48,8 @@
     <string name="lyrics_server_invalid">请输入有效的 HTTPS 地址。</string>
     <string name="lyrics_server_saved">歌词服务器已保存</string>
     <string name="lyrics_server_reset">已恢复 LRCLIB 官方服务器</string>
+    <string name="about_software">关于软件</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_project">GitHub 项目：github.com/bsxucome/carlyrics</string>
+    <string name="open_github">打开 GitHub</string>
 </resources>

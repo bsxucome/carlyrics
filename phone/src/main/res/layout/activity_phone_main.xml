@@ -131,5 +131,19 @@
             android:text="@string/how_it_works_desc"
             android:textColor="#C6FFFFFF"
             android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/aboutView"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="16dp"
+            android:alpha="0.68"
+            android:gravity="center"
+            android:paddingLeft="12dp"
+            android:paddingRight="4dp"
+            android:text="@string/about_software"
+            android:textColor="#BFD8E8"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

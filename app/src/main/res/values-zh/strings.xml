@@ -81,4 +81,12 @@
     <string name="phone_status_waiting_playback">手机已连接，等待开始播放音乐。</string>
     <string name="phone_status_waiting_lyrics">手机已连接，等待歌词同步。</string>
     <string name="phone_status_ready">手机已连接并就绪。</string>
+    <string name="head_unit_lyrics_searching">歌词状态：车机正在联网搜索</string>
+    <string name="create_home_shortcut">添加到主页</string>
+    <string name="shortcut_requested">已发送创建主页快捷方式请求</string>
+    <string name="shortcut_unsupported">当前车机桌面不支持创建快捷方式</string>
+    <string name="about_software">关于软件</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_project">GitHub 项目：github.com/bsxucome/carlyrics</string>
+    <string name="open_github">打开 GitHub</string>
 </resources>

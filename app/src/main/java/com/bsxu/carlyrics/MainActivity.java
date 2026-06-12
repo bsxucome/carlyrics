@@ -4,10 +4,17 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
+import android.graphics.drawable.Icon;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -35,6 +42,7 @@ import com.bsxu.carlyrics.bridge.RemoteSessionStatusPayload;
 import com.bsxu.carlyrics.companion.ConnectionState;
 import com.bsxu.carlyrics.companion.HeadUnitCompanionManager;
 import com.bsxu.carlyrics.companion.HeadUnitSessionSnapshot;
+import com.bsxu.carlyrics.lyrics.HeadUnitLyricsRepository;
 import com.bsxu.carlyrics.model.LyricLine;
 import com.bsxu.carlyrics.ui.ArtworkBackdropFactory;
 
@@ -48,6 +56,9 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
 
     private static final String TAG = "HeadUnitMain";
     private static final String EXTRA_DEBUG_CONNECT_ADDRESS = "connect_address";
+    private static final String GITHUB_URL = "https://github.com/bsxucome/carlyrics";
+    private static final String HOME_SHORTCUT_ID = "carlyrics-head-unit-home";
+    private static final long AUTO_HEAD_UNIT_LYRICS_DELAY_MS = 2500L;
     private boolean awaitingReconnectAfterPermission;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
@@ -102,6 +113,15 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
             uiHandler.postDelayed(this, 500L);
         }
     };
+    private final Runnable headUnitLyricsLookupRunnable = new Runnable() {
+        @Override
+        public void run() {
+            scheduledLyricsTrackKey = "";
+            if (currentSession != null) {
+                requestHeadUnitLyrics(currentSession.playbackPayload, false);
+            }
+        }
+    };
 
     private View permissionPanel;
     private TextView permissionDescriptionView;
@@ -119,6 +139,8 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     private ImageButton nextButton;
     private Button retryLyricsButton;
     private Button disconnectButton;
+    private TextView createShortcutView;
+    private TextView aboutView;
     private TextView lyricsStatusView;
     private TextView diagnosticsView;
     private TextView lyricLineTopView;
@@ -128,8 +150,13 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     private TextView lyricLineBottomView;
 
     private HeadUnitCompanionManager companionManager;
+    private HeadUnitLyricsRepository headUnitLyricsRepository;
 
     private HeadUnitSessionSnapshot currentSession;
+    private RemoteLyricsPayload localLyricsPayload;
+    private boolean headUnitLyricsSearching;
+    private String scheduledLyricsTrackKey = "";
+    private String attemptedLyricsTrackKey = "";
     private String currentTrackKey = "";
     private List<LyricLine> currentLyricsLines = new ArrayList<LyricLine>();
     private boolean currentLyricsSynced;
@@ -145,6 +172,7 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
         bindViews();
 
         companionManager = HeadUnitCompanionManager.getInstance(this);
+        headUnitLyricsRepository = new HeadUnitLyricsRepository();
 
         openPermissionButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -187,9 +215,12 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
                         && currentSession.hasTrackData()
                         && !hasCurrentLyricsPayload()) {
                     companionManager.sendControl(BridgeContract.ACTION_REFRESH_LYRICS);
+                    requestHeadUnitLyrics(currentSession.playbackPayload, true);
                 }
             }
         });
+        createShortcutView.setOnClickListener(v -> requestHomeShortcut());
+        aboutView.setOnClickListener(v -> showAboutDialog());
         disconnectButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -242,6 +273,15 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     }
 
     @Override
+    protected void onDestroy() {
+        uiHandler.removeCallbacks(headUnitLyricsLookupRunnable);
+        if (headUnitLyricsRepository != null) {
+            headUnitLyricsRepository.close();
+        }
+        super.onDestroy();
+    }
+
+    @Override
     public void onSessionUpdated(HeadUnitSessionSnapshot snapshot) {
         renderSession(snapshot);
     }
@@ -270,6 +310,8 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
         nextButton = (ImageButton) findViewById(R.id.nextButton);
         retryLyricsButton = (Button) findViewById(R.id.retryLyricsButton);
         disconnectButton = (Button) findViewById(R.id.disconnectButton);
+        createShortcutView = (TextView) findViewById(R.id.createShortcutView);
+        aboutView = (TextView) findViewById(R.id.aboutView);
         lyricsStatusView = (TextView) findViewById(R.id.lyricsStatusView);
         diagnosticsView = (TextView) findViewById(R.id.diagnosticsView);
         lyricLineTopView = (TextView) findViewById(R.id.lyricLineTop);
@@ -447,19 +489,27 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     private void renderSession(HeadUnitSessionSnapshot snapshot) {
         currentSession = snapshot;
         renderConnectionBanner(snapshot);
-        updateActionButtons(snapshot);
 
         String newTrackKey = getTrackKey(snapshot == null ? null : snapshot.playbackPayload);
         boolean trackChanged = !TextUtils.equals(currentTrackKey, newTrackKey);
         if (trackChanged) {
+            cancelHeadUnitLyricsLookup();
             currentTrackKey = newTrackKey;
             currentLyricIndex = -1;
             currentLyricsLines = new ArrayList<LyricLine>();
             currentLyricsSynced = false;
+            localLyricsPayload = null;
+            attemptedLyricsTrackKey = "";
+        }
+        if (hasRemoteLyricsPayload(snapshot)) {
+            cancelHeadUnitLyricsLookup();
+            localLyricsPayload = null;
         }
 
         renderPlayback(snapshot);
         renderLyrics(snapshot);
+        maybeScheduleHeadUnitLyricsLookup(snapshot);
+        updateActionButtons(snapshot);
         renderDiagnostics();
     }
 
@@ -539,9 +589,11 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
             return;
         }
 
-        RemoteLyricsPayload payload = snapshot.lyricsPayload;
+        RemoteLyricsPayload payload = getEffectiveLyricsPayload(snapshot);
         if (payload == null || !TextUtils.equals(payload.trackKey, currentTrackKey)) {
-            lyricsStatusView.setText(buildRemoteLyricsHint(snapshot));
+            lyricsStatusView.setText(headUnitLyricsSearching
+                    ? getString(R.string.head_unit_lyrics_searching)
+                    : buildRemoteLyricsHint(snapshot));
             renderLyricStage();
             return;
         }
@@ -652,17 +704,14 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     }
 
     private boolean hasCurrentLyricsPayload() {
-        return currentSession != null
-                && currentSession.lyricsPayload != null
-                && TextUtils.equals(currentSession.lyricsPayload.trackKey, currentTrackKey);
+        return getEffectiveLyricsPayload(currentSession) != null;
     }
 
     private void updateActionButtons(HeadUnitSessionSnapshot snapshot) {
         boolean connected = snapshot != null && snapshot.isConnected();
         boolean canRefreshLyrics = connected
                 && snapshot.hasTrackData()
-                && (snapshot.lyricsPayload == null
-                || !TextUtils.equals(snapshot.lyricsPayload.trackKey, currentTrackKey));
+                && !hasCurrentLyricsPayload();
 
         previousButton.setEnabled(connected);
         playPauseButton.setEnabled(connected);
@@ -677,6 +726,139 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
         nextButton.setAlpha(connected ? 1f : 0.45f);
         retryLyricsButton.setAlpha(canRefreshLyrics ? 1f : 0.55f);
         disconnectButton.setAlpha(connected ? 1f : 0.55f);
+    }
+
+    private RemoteLyricsPayload getEffectiveLyricsPayload(HeadUnitSessionSnapshot snapshot) {
+        if (hasRemoteLyricsPayload(snapshot)) {
+            return snapshot.lyricsPayload;
+        }
+        if (localLyricsPayload != null
+                && TextUtils.equals(localLyricsPayload.trackKey, currentTrackKey)) {
+            return localLyricsPayload;
+        }
+        return null;
+    }
+
+    private boolean hasRemoteLyricsPayload(HeadUnitSessionSnapshot snapshot) {
+        return snapshot != null
+                && snapshot.lyricsPayload != null
+                && TextUtils.equals(snapshot.lyricsPayload.trackKey, currentTrackKey);
+    }
+
+    private void maybeScheduleHeadUnitLyricsLookup(HeadUnitSessionSnapshot snapshot) {
+        if (snapshot == null
+                || !snapshot.isConnected()
+                || !snapshot.hasTrackData()
+                || hasCurrentLyricsPayload()
+                || !isNetworkConnected()
+                || TextUtils.isEmpty(currentTrackKey)
+                || TextUtils.equals(attemptedLyricsTrackKey, currentTrackKey)
+                || TextUtils.equals(scheduledLyricsTrackKey, currentTrackKey)
+                || headUnitLyricsSearching) {
+            return;
+        }
+        scheduledLyricsTrackKey = currentTrackKey;
+        uiHandler.removeCallbacks(headUnitLyricsLookupRunnable);
+        uiHandler.postDelayed(headUnitLyricsLookupRunnable, AUTO_HEAD_UNIT_LYRICS_DELAY_MS);
+    }
+
+    private void requestHeadUnitLyrics(RemotePlaybackPayload playback, boolean forceRefresh) {
+        if (playback == null
+                || TextUtils.isEmpty(playback.trackKey)
+                || !TextUtils.equals(playback.trackKey, currentTrackKey)
+                || !isNetworkConnected()) {
+            return;
+        }
+        uiHandler.removeCallbacks(headUnitLyricsLookupRunnable);
+        scheduledLyricsTrackKey = "";
+        attemptedLyricsTrackKey = playback.trackKey;
+        headUnitLyricsSearching = true;
+        renderLyrics(currentSession);
+        headUnitLyricsRepository.request(playback, forceRefresh, payload -> {
+            headUnitLyricsSearching = false;
+            if (currentSession == null
+                    || !TextUtils.equals(playback.trackKey, currentTrackKey)
+                    || hasRemoteLyricsPayload(currentSession)) {
+                return;
+            }
+            localLyricsPayload = payload;
+            renderLyrics(currentSession);
+            updateActionButtons(currentSession);
+            renderDiagnostics();
+        });
+    }
+
+    private void cancelHeadUnitLyricsLookup() {
+        uiHandler.removeCallbacks(headUnitLyricsLookupRunnable);
+        scheduledLyricsTrackKey = "";
+        headUnitLyricsSearching = false;
+        if (headUnitLyricsRepository != null) {
+            headUnitLyricsRepository.cancel();
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean isNetworkConnected() {
+        ConnectivityManager manager =
+                (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = manager == null ? null : manager.getActiveNetworkInfo();
+        return networkInfo != null && networkInfo.isConnected();
+    }
+
+    private void requestHomeShortcut() {
+        Intent launchIntent = new Intent(this, MainActivity.class)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ShortcutManager manager = getSystemService(ShortcutManager.class);
+            if (manager != null && manager.isRequestPinShortcutSupported()) {
+                ShortcutInfo shortcut = new ShortcutInfo.Builder(this, HOME_SHORTCUT_ID)
+                        .setShortLabel(getString(R.string.app_name))
+                        .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+                        .setIntent(launchIntent)
+                        .build();
+                if (manager.requestPinShortcut(shortcut, null)) {
+                    Toast.makeText(this, R.string.shortcut_requested, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
+        }
+        Intent installIntent = new Intent("com.android.launcher.action.INSTALL_SHORTCUT");
+        installIntent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, launchIntent);
+        installIntent.putExtra(Intent.EXTRA_SHORTCUT_NAME, getString(R.string.app_name));
+        installIntent.putExtra(
+                Intent.EXTRA_SHORTCUT_ICON_RESOURCE,
+                Intent.ShortcutIconResource.fromContext(this, R.mipmap.ic_launcher)
+        );
+        installIntent.putExtra("duplicate", false);
+        try {
+            sendBroadcast(installIntent);
+            Toast.makeText(this, R.string.shortcut_requested, Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Launcher rejected shortcut request", error);
+            Toast.makeText(this, R.string.shortcut_unsupported, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void showAboutDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.about_software)
+                .setMessage(
+                        getString(R.string.about_version, BuildConfig.VERSION_NAME)
+                                + "\n\n"
+                                + getString(R.string.about_project)
+                )
+                .setNegativeButton(android.R.string.ok, null)
+                .setPositiveButton(R.string.open_github, (dialog, which) -> openGitHub())
+                .show();
+    }
+
+    private void openGitHub() {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)));
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(this, GITHUB_URL, Toast.LENGTH_LONG).show();
+        }
     }
 
     private void renderDiagnostics() {

@@ -81,4 +81,12 @@
     <string name="phone_status_waiting_playback">Phone connected, waiting for music playback.</string>
     <string name="phone_status_waiting_lyrics">Phone connected, waiting for lyrics.</string>
     <string name="phone_status_ready">Phone connected and ready.</string>
+    <string name="head_unit_lyrics_searching">Lyrics status: searching online from the head unit</string>
+    <string name="create_home_shortcut">Add to home</string>
+    <string name="shortcut_requested">Home-screen shortcut request sent</string>
+    <string name="shortcut_unsupported">This launcher does not support adding shortcuts</string>
+    <string name="about_software">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_project">GitHub project: github.com/bsxucome/carlyrics</string>
+    <string name="open_github">Open GitHub</string>
 </resources>

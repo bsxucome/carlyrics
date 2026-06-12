@@ -93,6 +93,7 @@ public class PhoneMainActivity extends ComponentActivity {
     private TextView lyricsServerView;
     private Button configureLyricsServerButton;
     private Button resetLyricsServerButton;
+    private TextView aboutView;
     private boolean fastListenerRecoveryRequested;
     private long automaticRecoveryStartedElapsedMs;
 
@@ -110,12 +111,14 @@ public class PhoneMainActivity extends ComponentActivity {
         lyricsServerView = (TextView) findViewById(R.id.lyricsServerView);
         configureLyricsServerButton = (Button) findViewById(R.id.configureLyricsServerButton);
         resetLyricsServerButton = (Button) findViewById(R.id.resetLyricsServerButton);
+        aboutView = (TextView) findViewById(R.id.aboutView);
 
         notificationAccessButton.setOnClickListener(v -> handleNotificationButtonClick());
         bluetoothPermissionButton.setOnClickListener(v -> requestBluetoothPermissionIfNeeded());
         resetTrustedHeadUnitButton.setOnClickListener(v -> resetTrustedHeadUnit());
         configureLyricsServerButton.setOnClickListener(v -> showLyricsServerDialog());
         resetLyricsServerButton.setOnClickListener(v -> resetLyricsServer());
+        aboutView.setOnClickListener(v -> showAboutDialog());
 
         ensureConnectionServiceRunningIfPermitted(true);
         requestNotificationPermissionIfNeeded();
@@ -343,6 +346,34 @@ public class PhoneMainActivity extends ComponentActivity {
         new PhoneLyricsSettings(this).clearCustomLrcLibBaseUrl();
         renderStatus();
         Toast.makeText(this, R.string.lyrics_server_reset, Toast.LENGTH_SHORT).show();
+    }
+
+    private void showAboutDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.about_software)
+                .setMessage(
+                        getString(R.string.about_version, BuildConfig.VERSION_NAME)
+                                + "\n\n"
+                                + getString(R.string.about_project)
+                )
+                .setNegativeButton(android.R.string.ok, null)
+                .setPositiveButton(R.string.open_github, (dialog, which) -> openGitHub())
+                .show();
+    }
+
+    private void openGitHub() {
+        try {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://github.com/bsxucome/carlyrics")
+            ));
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(
+                    this,
+                    "https://github.com/bsxucome/carlyrics",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
     }
 
     private void updateRecommendedAction(
