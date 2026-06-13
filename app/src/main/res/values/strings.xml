@@ -18,6 +18,13 @@
     <string name="lyrics_waiting_remote">Waiting for lyrics from the phone companion...</string>
     <string name="lyrics_no_displayable_lines">No displayable lyrics for this track</string>
     <string name="lyrics_status_prefix">Lyrics status: </string>
+    <string name="lyrics_source_official_exact">official exact</string>
+    <string name="lyrics_source_official_search">official search</string>
+    <string name="lyrics_source_mirror_exact">mirror exact</string>
+    <string name="lyrics_source_mirror_search">mirror search</string>
+    <string name="lyrics_source_head_unit_exact">head unit exact</string>
+    <string name="lyrics_source_head_unit_search">head unit search</string>
+    <string name="lyrics_source_cache">cache · %1$s</string>
     <string name="debug_shown">Debug info shown</string>
     <string name="debug_hidden">Debug info hidden</string>
     <string name="waiting_for_phone_companion">Waiting for phone companion...</string>
@@ -82,6 +89,10 @@
     <string name="phone_status_waiting_lyrics">Phone connected, waiting for lyrics.</string>
     <string name="phone_status_ready">Phone connected and ready.</string>
     <string name="head_unit_lyrics_searching">Lyrics status: searching online from the head unit</string>
+    <string name="head_unit_lyrics_not_found">Lyrics status: no matching lyrics found</string>
+    <string name="head_unit_lyrics_network_error">Lyrics status: head unit network unavailable</string>
+    <string name="head_unit_lyrics_timeout">Lyrics status: online search timed out</string>
+    <string name="head_unit_lyrics_response_error">Lyrics status: lyrics service response error</string>
     <string name="create_home_shortcut">Add to home</string>
     <string name="shortcut_requested">Home-screen shortcut request sent</string>
     <string name="shortcut_unsupported">This launcher does not support adding shortcuts</string>

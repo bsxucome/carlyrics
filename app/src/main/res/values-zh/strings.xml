@@ -18,6 +18,13 @@
     <string name="lyrics_waiting_remote">等待手机助手发送歌词…</string>
     <string name="lyrics_no_displayable_lines">当前歌曲没有可显示的歌词</string>
     <string name="lyrics_status_prefix">歌词状态：</string>
+    <string name="lyrics_source_official_exact">官方精确</string>
+    <string name="lyrics_source_official_search">官方搜索</string>
+    <string name="lyrics_source_mirror_exact">镜像精确</string>
+    <string name="lyrics_source_mirror_search">镜像搜索</string>
+    <string name="lyrics_source_head_unit_exact">车机精确</string>
+    <string name="lyrics_source_head_unit_search">车机搜索</string>
+    <string name="lyrics_source_cache">缓存·%1$s</string>
     <string name="debug_shown">已显示调试信息</string>
     <string name="debug_hidden">已隐藏调试信息</string>
     <string name="waiting_for_phone_companion">等待手机助手连接…</string>
@@ -82,6 +89,10 @@
     <string name="phone_status_waiting_lyrics">手机已连接，等待歌词同步。</string>
     <string name="phone_status_ready">手机已连接并就绪。</string>
     <string name="head_unit_lyrics_searching">歌词状态：车机正在联网搜索</string>
+    <string name="head_unit_lyrics_not_found">歌词状态：未找到匹配歌词</string>
+    <string name="head_unit_lyrics_network_error">歌词状态：车机网络不可用</string>
+    <string name="head_unit_lyrics_timeout">歌词状态：联网搜索超时</string>
+    <string name="head_unit_lyrics_response_error">歌词状态：歌词服务响应异常</string>
     <string name="create_home_shortcut">添加到主页</string>
     <string name="shortcut_requested">已发送创建主页快捷方式请求</string>
     <string name="shortcut_unsupported">当前车机桌面不支持创建快捷方式</string>

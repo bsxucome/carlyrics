@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.List;
@@ -27,19 +28,33 @@ final class HeadUnitLyricsClient {
             "CarLyricsHeadUnit/" + BuildConfig.VERSION_NAME
                     + " (https://github.com/bsxucome/carlyrics)";
 
-    RemoteLyricsPayload fetch(RemotePlaybackPayload playback, long timeoutMs) {
+    HeadUnitLyricsResult fetch(RemotePlaybackPayload playback, long timeoutMs) {
         if (playback == null || isBlank(playback.title)) {
-            return null;
+            return HeadUnitLyricsResult.failure(HeadUnitLyricsResult.Status.NOT_FOUND);
         }
         long deadlineNanos = System.nanoTime() + Math.max(1000L, timeoutMs) * 1_000_000L;
-        RemoteLyricsPayload exact = fetchExact(playback, deadlineNanos);
-        if (exact != null) {
-            return exact;
+        try {
+            RemoteLyricsPayload exact = fetchExact(playback, deadlineNanos);
+            if (exact != null) {
+                return HeadUnitLyricsResult.success(exact);
+            }
+            RemoteLyricsPayload search = fetchSearch(playback, deadlineNanos);
+            return search == null
+                    ? HeadUnitLyricsResult.failure(HeadUnitLyricsResult.Status.NOT_FOUND)
+                    : HeadUnitLyricsResult.success(search);
+        } catch (SocketTimeoutException timeout) {
+            return HeadUnitLyricsResult.failure(HeadUnitLyricsResult.Status.TIMEOUT);
+        } catch (ResponseException responseError) {
+            return HeadUnitLyricsResult.failure(HeadUnitLyricsResult.Status.RESPONSE_ERROR);
+        } catch (IOException networkError) {
+            return HeadUnitLyricsResult.failure(HeadUnitLyricsResult.Status.NETWORK_ERROR);
         }
-        return fetchSearch(playback, deadlineNanos);
     }
 
-    private RemoteLyricsPayload fetchExact(RemotePlaybackPayload playback, long deadlineNanos) {
+    private RemoteLyricsPayload fetchExact(
+            RemotePlaybackPayload playback,
+            long deadlineNanos
+    ) throws IOException {
         if (isBlank(playback.artist)) {
             return null;
         }
@@ -56,7 +71,10 @@ final class HeadUnitLyricsClient {
         return parsePayload(playback.trackKey, object, "LRCLIB head unit");
     }
 
-    private RemoteLyricsPayload fetchSearch(RemotePlaybackPayload playback, long deadlineNanos) {
+    private RemoteLyricsPayload fetchSearch(
+            RemotePlaybackPayload playback,
+            long deadlineNanos
+    ) throws IOException {
         StringBuilder url = new StringBuilder(BASE_URL)
                 .append("/api/search?track_name=").append(encode(playback.title));
         if (!isBlank(playback.artist)) {
@@ -113,31 +131,31 @@ final class HeadUnitLyricsClient {
         return score;
     }
 
-    private JSONObject requestObject(String url, long deadlineNanos) {
+    private JSONObject requestObject(String url, long deadlineNanos) throws IOException {
         String body = request(url, deadlineNanos);
         if (body == null) {
             return null;
         }
         try {
             return new JSONObject(body);
-        } catch (JSONException ignored) {
-            return null;
+        } catch (JSONException invalidResponse) {
+            throw new ResponseException();
         }
     }
 
-    private JSONArray requestArray(String url, long deadlineNanos) {
+    private JSONArray requestArray(String url, long deadlineNanos) throws IOException {
         String body = request(url, deadlineNanos);
         if (body == null) {
             return null;
         }
         try {
             return new JSONArray(body);
-        } catch (JSONException ignored) {
-            return null;
+        } catch (JSONException invalidResponse) {
+            throw new ResponseException();
         }
     }
 
-    private String request(String url, long deadlineNanos) {
+    private String request(String url, long deadlineNanos) throws IOException {
         HttpURLConnection connection = null;
         try {
             int remainingMs = remainingMs(deadlineNanos);
@@ -148,12 +166,13 @@ final class HeadUnitLyricsClient {
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("User-Agent", USER_AGENT);
             int responseCode = connection.getResponseCode();
-            if (responseCode < 200 || responseCode >= 300) {
+            if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
                 return null;
             }
+            if (responseCode < 200 || responseCode >= 300) {
+                throw new ResponseException();
+            }
             return readString(connection.getInputStream());
-        } catch (IOException ignored) {
-            return null;
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -207,7 +226,7 @@ final class HeadUnitLyricsClient {
     private static int remainingMs(long deadlineNanos) throws IOException {
         long remaining = (deadlineNanos - System.nanoTime()) / 1_000_000L;
         if (remaining <= 0L) {
-            throw new IOException("Lyrics lookup timed out");
+            throw new SocketTimeoutException("Lyrics lookup timed out");
         }
         return (int) Math.min(Integer.MAX_VALUE, remaining);
     }
@@ -235,5 +254,8 @@ final class HeadUnitLyricsClient {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static final class ResponseException extends IOException {
     }
 }

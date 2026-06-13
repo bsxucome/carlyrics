@@ -43,6 +43,7 @@ import com.bsxu.carlyrics.companion.ConnectionState;
 import com.bsxu.carlyrics.companion.HeadUnitCompanionManager;
 import com.bsxu.carlyrics.companion.HeadUnitSessionSnapshot;
 import com.bsxu.carlyrics.lyrics.HeadUnitLyricsRepository;
+import com.bsxu.carlyrics.lyrics.HeadUnitLyricsResult;
 import com.bsxu.carlyrics.model.LyricLine;
 import com.bsxu.carlyrics.ui.ArtworkBackdropFactory;
 
@@ -155,6 +156,7 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     private HeadUnitSessionSnapshot currentSession;
     private RemoteLyricsPayload localLyricsPayload;
     private boolean headUnitLyricsSearching;
+    private HeadUnitLyricsResult.Status headUnitLyricsStatus;
     private String scheduledLyricsTrackKey = "";
     private String attemptedLyricsTrackKey = "";
     private String currentTrackKey = "";
@@ -499,11 +501,13 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
             currentLyricsLines = new ArrayList<LyricLine>();
             currentLyricsSynced = false;
             localLyricsPayload = null;
+            headUnitLyricsStatus = null;
             attemptedLyricsTrackKey = "";
         }
         if (hasRemoteLyricsPayload(snapshot)) {
             cancelHeadUnitLyricsLookup();
             localLyricsPayload = null;
+            headUnitLyricsStatus = null;
         }
 
         renderPlayback(snapshot);
@@ -591,9 +595,7 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
 
         RemoteLyricsPayload payload = getEffectiveLyricsPayload(snapshot);
         if (payload == null || !TextUtils.equals(payload.trackKey, currentTrackKey)) {
-            lyricsStatusView.setText(headUnitLyricsSearching
-                    ? getString(R.string.head_unit_lyrics_searching)
-                    : buildRemoteLyricsHint(snapshot));
+            lyricsStatusView.setText(buildLyricsStatusText(snapshot));
             renderLyricStage();
             return;
         }
@@ -603,8 +605,40 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
             currentLyricsSynced = payload.synced;
             currentLyricIndex = -1;
         }
-        lyricsStatusView.setText(getString(R.string.lyrics_status_prefix) + payload.sourceLabel);
+        lyricsStatusView.setText(
+                getString(R.string.lyrics_status_prefix) + localizeLyricsSource(payload.sourceLabel)
+        );
         renderLyricStage();
+    }
+
+    private String localizeLyricsSource(String sourceLabel) {
+        String source = emptyFallback(sourceLabel, "");
+        String cachePrefix = "Cache · ";
+        if (source.startsWith(cachePrefix)) {
+            return getString(
+                    R.string.lyrics_source_cache,
+                    localizeLyricsSource(source.substring(cachePrefix.length()))
+            );
+        }
+        if ("LRCLIB exact".equals(source)) {
+            return getString(R.string.lyrics_source_official_exact);
+        }
+        if ("LRCLIB search".equals(source)) {
+            return getString(R.string.lyrics_source_official_search);
+        }
+        if ("LRCLIB mirror exact".equals(source)) {
+            return getString(R.string.lyrics_source_mirror_exact);
+        }
+        if ("LRCLIB mirror search".equals(source)) {
+            return getString(R.string.lyrics_source_mirror_search);
+        }
+        if ("LRCLIB head unit".equals(source)) {
+            return getString(R.string.lyrics_source_head_unit_exact);
+        }
+        if ("LRCLIB head unit search".equals(source)) {
+            return getString(R.string.lyrics_source_head_unit_search);
+        }
+        return source;
     }
 
     private void updateProgressAndLyrics() {
@@ -750,7 +784,6 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
                 || !snapshot.isConnected()
                 || !snapshot.hasTrackData()
                 || hasCurrentLyricsPayload()
-                || !isNetworkConnected()
                 || TextUtils.isEmpty(currentTrackKey)
                 || TextUtils.equals(attemptedLyricsTrackKey, currentTrackKey)
                 || TextUtils.equals(scheduledLyricsTrackKey, currentTrackKey)
@@ -765,23 +798,30 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
     private void requestHeadUnitLyrics(RemotePlaybackPayload playback, boolean forceRefresh) {
         if (playback == null
                 || TextUtils.isEmpty(playback.trackKey)
-                || !TextUtils.equals(playback.trackKey, currentTrackKey)
-                || !isNetworkConnected()) {
+                || !TextUtils.equals(playback.trackKey, currentTrackKey)) {
+            return;
+        }
+        if (!isNetworkConnected()) {
+            attemptedLyricsTrackKey = playback.trackKey;
+            headUnitLyricsStatus = HeadUnitLyricsResult.Status.NETWORK_ERROR;
+            renderLyrics(currentSession);
             return;
         }
         uiHandler.removeCallbacks(headUnitLyricsLookupRunnable);
         scheduledLyricsTrackKey = "";
         attemptedLyricsTrackKey = playback.trackKey;
         headUnitLyricsSearching = true;
+        headUnitLyricsStatus = null;
         renderLyrics(currentSession);
-        headUnitLyricsRepository.request(playback, forceRefresh, payload -> {
+        headUnitLyricsRepository.request(playback, forceRefresh, result -> {
             headUnitLyricsSearching = false;
             if (currentSession == null
                     || !TextUtils.equals(playback.trackKey, currentTrackKey)
                     || hasRemoteLyricsPayload(currentSession)) {
                 return;
             }
-            localLyricsPayload = payload;
+            localLyricsPayload = result.payload;
+            headUnitLyricsStatus = result.status;
             renderLyrics(currentSession);
             updateActionButtons(currentSession);
             renderDiagnostics();
@@ -795,6 +835,25 @@ public class MainActivity extends ComponentActivity implements HeadUnitCompanion
         if (headUnitLyricsRepository != null) {
             headUnitLyricsRepository.cancel();
         }
+    }
+
+    private String buildLyricsStatusText(HeadUnitSessionSnapshot snapshot) {
+        if (headUnitLyricsSearching) {
+            return getString(R.string.head_unit_lyrics_searching);
+        }
+        if (headUnitLyricsStatus == HeadUnitLyricsResult.Status.NOT_FOUND) {
+            return getString(R.string.head_unit_lyrics_not_found);
+        }
+        if (headUnitLyricsStatus == HeadUnitLyricsResult.Status.NETWORK_ERROR) {
+            return getString(R.string.head_unit_lyrics_network_error);
+        }
+        if (headUnitLyricsStatus == HeadUnitLyricsResult.Status.TIMEOUT) {
+            return getString(R.string.head_unit_lyrics_timeout);
+        }
+        if (headUnitLyricsStatus == HeadUnitLyricsResult.Status.RESPONSE_ERROR) {
+            return getString(R.string.head_unit_lyrics_response_error);
+        }
+        return buildRemoteLyricsHint(snapshot);
     }
 
     @SuppressWarnings("deprecation")

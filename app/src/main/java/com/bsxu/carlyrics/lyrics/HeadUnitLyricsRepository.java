@@ -18,7 +18,7 @@ public final class HeadUnitLyricsRepository {
     private static final long LOOKUP_TIMEOUT_MS = 5500L;
 
     public interface Callback {
-        void onLoaded(RemoteLyricsPayload payload);
+        void onLoaded(HeadUnitLyricsResult result);
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -44,7 +44,9 @@ public final class HeadUnitLyricsRepository {
     ) {
         if (playback == null || playback.trackKey.isEmpty()) {
             if (callback != null) {
-                callback.onLoaded(null);
+                callback.onLoaded(HeadUnitLyricsResult.failure(
+                        HeadUnitLyricsResult.Status.NOT_FOUND
+                ));
             }
             return;
         }
@@ -52,19 +54,22 @@ public final class HeadUnitLyricsRepository {
         executor.execute(new Runnable() {
             @Override
             public void run() {
-                RemoteLyricsPayload result;
+                RemoteLyricsPayload cached;
                 synchronized (cache) {
-                    result = forceRefresh ? null : cache.get(playback.trackKey);
+                    cached = forceRefresh ? null : cache.get(playback.trackKey);
                 }
-                if (result == null) {
+                HeadUnitLyricsResult result;
+                if (cached != null) {
+                    result = HeadUnitLyricsResult.success(cached);
+                } else {
                     result = client.fetch(playback, LOOKUP_TIMEOUT_MS);
-                    if (result != null) {
+                    if (result.payload != null) {
                         synchronized (cache) {
-                            cache.put(playback.trackKey, result);
+                            cache.put(playback.trackKey, result.payload);
                         }
                     }
                 }
-                final RemoteLyricsPayload delivered = result;
+                final HeadUnitLyricsResult delivered = result;
                 mainHandler.post(new Runnable() {
                     @Override
                     public void run() {
